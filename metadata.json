@@ -1,0 +1,6 @@
+{
+  "name": "Kasir UMKM",
+  "description": "Aplikasi Kasir (POS) UMKM digital dengan pencatatan stok real-time, manajemen pengeluaran, perhitungan laba rugi, dan kalkulator bagi hasil investor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
