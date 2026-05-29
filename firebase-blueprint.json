@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Product shape in POS",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sku": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "cost": { "type": "number" },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "category": { "type": "string" }
+      }
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Sales transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "costTotal": { "type": "number" },
+        "profit": { "type": "number" },
+        "cashPaid": { "type": "number" },
+        "cashReturn": { "type": "number" },
+        "cashierName": { "type": "string" },
+        "paymentMethod": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/stores/{storeCode}/products/{productId}": {
+      "schema": "Product",
+      "description": "Store products"
+    },
+    "/stores/{storeCode}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Store transactions"
+    },
+    "/stores/{storeCode}/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Store product categories"
+    },
+    "/stores/{storeCode}/cashierExpenses/{expenseId}": {
+      "schema": "CashierExpense",
+      "description": "Store cashier expenses"
+    },
+    "/stores/{storeCode}/operationalExpenses/{expenseId}": {
+      "schema": "OperationalExpense",
+      "description": "Store operational expenses"
+    },
+    "/stores/{storeCode}/investors/{investorId}": {
+      "schema": "Investor",
+      "description": "Store investors"
+    },
+    "/stores/{storeCode}/storeSettings/{settingsId}": {
+      "schema": "StoreSettings",
+      "description": "Store settings documents"
+    },
+    "/stores/{storeCode}/stockLogs/{logId}": {
+      "schema": "StockLog",
+      "description": "Store inventory stock logs"
+    },
+    "/stores/{storeCode}/shifts/{shiftId}": {
+      "schema": "CashierShift",
+      "description": "Store cashier shifts"
+    },
+    "/stores/{storeCode}/toppings/{toppingId}": {
+      "schema": "Topping",
+      "description": "Store toppings"
+    },
+    "/stores/{storeCode}/discounts/{discountId}": {
+      "schema": "Discount",
+      "description": "Store discounts"
+    }
+  }
+}
