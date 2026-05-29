@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
-import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift } from "./types";
+import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift, Topping } from "./types";
 import {
   getProducts,
   saveProducts,
@@ -26,7 +26,9 @@ import {
   saveShifts,
   resetToMockData as dbReset,
   resetToFactorySettings,
-  resetTransactionsOnly
+  resetTransactionsOnly,
+  getToppings,
+  saveToppings
 } from "./dataStore";
 import { syncAllDataToGoogleSheets } from "./utils/googleSheetsService";
 import { getAccessToken } from "./utils/googleAuth";
@@ -42,6 +44,7 @@ interface AppContextType {
   stockLogs: StockLog[];
   shifts: CashierShift[];
   activeShift: CashierShift | null;
+  toppings: Topping[];
   openShift: (cashierName: string, startBalance: number) => void;
   closeShift: (actualDeposit: number, notes?: string) => void;
   addProduct: (product: Omit<Product, "id">) => void;
@@ -59,6 +62,9 @@ interface AppContextType {
   adjustStock: (productId: string, quantityChange: number, type: "in" | "out" | "adj", notes?: string) => void;
   resetAllData: () => void;
   resetOnlyTransactions: () => void;
+  addTopping: (topping: Omit<Topping, "id">) => void;
+  updateTopping: (topping: Topping) => void;
+  deleteTopping: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -79,6 +85,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [categories, setCategories] = useState<Category[]>([]);
   const [stockLogs, setStockLogs] = useState<StockLog[]>([]);
   const [shifts, setShifts] = useState<CashierShift[]>([]);
+  const [toppings, setToppings] = useState<Topping[]>([]);
 
   // Load initial data
   useEffect(() => {
@@ -91,6 +98,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCategories(getCategories());
     setStockLogs(getStockLogs());
     setShifts(getShifts());
+    setToppings(getToppings());
   }, []);
 
   // Compute active shift with real-time aggregated shift figures
@@ -422,6 +430,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]);
     setStockLogs([]);
     setShifts([]);
+    setToppings(getToppings());
   };
 
   const resetOnlyTransactions = () => {
@@ -598,6 +607,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     checkMonthlyClosing();
   }, [transactions, cashierExpenses, operationalExpenses, products]);
 
+  const addTopping = (newTopping: Omit<Topping, "id">) => {
+    const fresh: Topping = {
+      ...newTopping,
+      id: "top_" + Date.now().toString()
+    };
+    const updated = [...toppings, fresh];
+    setToppings(updated);
+    saveToppings(updated);
+  };
+
+  const updateTopping = (updatedTopping: Topping) => {
+    const updated = toppings.map(t => (t.id === updatedTopping.id ? updatedTopping : t));
+    setToppings(updated);
+    saveToppings(updated);
+  };
+
+  const deleteTopping = (id: string) => {
+    const updated = toppings.filter(t => t.id !== id);
+    setToppings(updated);
+    saveToppings(updated);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -611,6 +642,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stockLogs,
         shifts,
         activeShift,
+        toppings,
         openShift,
         closeShift,
         addProduct,
@@ -627,7 +659,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCategory,
         adjustStock,
         resetAllData,
-        resetOnlyTransactions: resetOnlyTransactions
+        resetOnlyTransactions: resetOnlyTransactions,
+        addTopping,
+        updateTopping,
+        deleteTopping
       }}
     >
       {children}

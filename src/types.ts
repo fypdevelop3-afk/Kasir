@@ -33,9 +33,26 @@ export interface StockLog {
   referenceId?: string; // misal invoice number untuk out
 }
 
+export interface Topping {
+  id: string;
+  name: string;
+  price: number;
+}
+
+export interface SelectedTopping {
+  id: string;
+  name: string;
+  price: number;
+}
+
 export interface CartItem {
   product: Product;
   quantity: number;
+  selectedToppings?: SelectedTopping[];
+  discount?: {
+    type: "percentage" | "fixed";
+    value: number; // nilai persentase (e.g. 10) atau nominal rupiah (e.g. 5000)
+  };
 }
 
 export interface TransactionItem {
@@ -44,6 +61,8 @@ export interface TransactionItem {
   quantity: number;
   price: number;
   cost: number;
+  toppings?: { name: string; price: number }[];
+  discountAmount?: number; // total diskon yang dikurangi dari subtotal item ini
   subtotal: number;
 }
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift } from "./types";
+import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift, Topping } from "./types";
 
 // Helper keys
 const PRODUCTS_KEY = "kasir_umkm_products";
@@ -15,6 +15,15 @@ const SETTINGS_KEY = "kasir_umkm_settings";
 const CATEGORIES_KEY = "kasir_umkm_categories";
 const STOCK_LOGS_KEY = "kasir_umkm_stock_logs";
 const SHIFTS_KEY = "kasir_umkm_shifts";
+const TOPPINGS_KEY = "kasir_umkm_toppings";
+
+export const MOCK_TOPPINGS: Topping[] = [
+  { id: "top1", name: "Cokelat Parut", price: 3000 },
+  { id: "top2", name: "Keju Kraft", price: 4000 },
+  { id: "top3", name: "Boba / Tapioca Pearl", price: 5000 },
+  { id: "top4", name: "Whipped Cream", price: 4000 },
+  { id: "top5", name: "Susu Kental Manis Extra", price: 2000 }
+];
 
 // Default Store Settings
 const DEFAULT_SETTINGS: StoreSettings = {
@@ -348,6 +357,19 @@ export const saveShifts = (shifts: CashierShift[]): void => {
   localStorage.setItem(SHIFTS_KEY, JSON.stringify(shifts));
 };
 
+export const getToppings = (): Topping[] => {
+  const data = localStorage.getItem(TOPPINGS_KEY);
+  if (!data) {
+    localStorage.setItem(TOPPINGS_KEY, JSON.stringify(MOCK_TOPPINGS));
+    return MOCK_TOPPINGS;
+  }
+  return JSON.parse(data);
+};
+
+export const saveToppings = (toppings: Topping[]): void => {
+  localStorage.setItem(TOPPINGS_KEY, JSON.stringify(toppings));
+};
+
 export const resetToFactorySettings = (): void => {
   localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
   localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify([]));
@@ -358,6 +380,7 @@ export const resetToFactorySettings = (): void => {
   localStorage.setItem(CATEGORIES_KEY, JSON.stringify(DEFAULT_CATEGORIES));
   localStorage.setItem(STOCK_LOGS_KEY, JSON.stringify([]));
   localStorage.setItem(SHIFTS_KEY, JSON.stringify([]));
+  localStorage.setItem(TOPPINGS_KEY, JSON.stringify(MOCK_TOPPINGS));
   localStorage.setItem("kasir_umkm_monthly_closings", JSON.stringify([]));
   localStorage.setItem("kasir_umkm_archived_transactions", JSON.stringify([]));
   localStorage.setItem("kasir_umkm_archived_cashier_expenses", JSON.stringify([]));
@@ -386,6 +409,7 @@ export const resetToMockData = (): void => {
   localStorage.removeItem(CATEGORIES_KEY);
   localStorage.removeItem(STOCK_LOGS_KEY);
   localStorage.removeItem(SHIFTS_KEY);
+  localStorage.removeItem(TOPPINGS_KEY);
   localStorage.removeItem("kasir_umkm_monthly_closings");
   localStorage.removeItem("kasir_umkm_archived_transactions");
   localStorage.removeItem("kasir_umkm_archived_cashier_expenses");

@@ -5,17 +5,28 @@
 
 import React, { useState, useMemo } from "react";
 import { useApp } from "../AppContext";
-import { Product, CartItem } from "../types";
+import { Product, CartItem, SelectedTopping } from "../types";
 import { formatRupiah, formatIndoDate } from "../utils/format";
 import { 
   Search, ShoppingCart, Plus, Minus, Trash2, ShieldAlert, 
   CheckCircle, Landmark, Receipt, Sparkles, User, FileText, 
-  X, AlertTriangle, ArrowRight, CirclePlus, MessageSquare, Send
+  X, AlertTriangle, ArrowRight, CirclePlus, MessageSquare, Send, Sliders
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export const CashierPOS: React.FC = () => {
-  const { products, addTransaction, addCashierExpense, cashierExpenses, categories: contextCategories, activeShift, openShift, closeShift, storeSettings } = useApp();
+  const { 
+    products, 
+    addTransaction, 
+    addCashierExpense, 
+    cashierExpenses, 
+    categories: contextCategories, 
+    activeShift, 
+    openShift, 
+    closeShift, 
+    storeSettings,
+    toppings 
+  } = useApp();
   
   // State for POS
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,6 +36,15 @@ export const CashierPOS: React.FC = () => {
   const [cashierName, setCashierName] = useState("Staff Kasir");
   const [cashPaid, setCashPaid] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"tunai" | "non-tunai">("tunai");
+
+  // State for Extra Topping & Discount Modal (Config Item)
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [configProduct, setConfigProduct] = useState<Product | null>(null);
+  const [configToppings, setConfigToppings] = useState<SelectedTopping[]>([]);
+  const [configDiscountType, setConfigDiscountType] = useState<"none" | "percentage" | "nominal">("none");
+  const [configDiscountValue, setConfigDiscountValue] = useState<number>(0);
+  const [configQuantity, setConfigQuantity] = useState<number>(1);
+  const [configCartIndex, setConfigCartIndex] = useState<number | null>(null);
   
   // Shift Forms
   const [openShiftName, setOpenShiftName] = useState("Staff Kasir");
@@ -65,49 +85,147 @@ export const CashierPOS: React.FC = () => {
     });
   }, [products, searchQuery, selectedCategory]);
 
+  // Helper calculations for CartItem with toppings and discounts
+  const getItemToppingsTotal = (item: CartItem): number => {
+    if (!item.selectedToppings) return 0;
+    return item.selectedToppings.reduce((sum, t) => sum + t.price, 0);
+  };
+
+  const getItemUnitPrice = (item: CartItem): number => {
+    return item.product.price + getItemToppingsTotal(item);
+  };
+
+  const getItemDiscountAmount = (item: CartItem): number => {
+    if (!item.discount) return 0;
+    const basePrice = getItemUnitPrice(item);
+    if (item.discount.type === "percentage") {
+      return basePrice * (item.discount.value / 100);
+    } else {
+      return item.discount.value;
+    }
+  };
+
+  const getItemFinalUnitPrice = (item: CartItem): number => {
+    return Math.max(0, getItemUnitPrice(item) - getItemDiscountAmount(item));
+  };
+
+  const getItemSubtotal = (item: CartItem): number => {
+    return getItemFinalUnitPrice(item) * item.quantity;
+  };
+
   // Cart operations
   const addToCart = (product: Product) => {
     if (product.stock <= 0) return;
-    
+    handleOpenItemConfig(product);
+  };
+
+  const handleOpenItemConfig = (product: Product) => {
+    setConfigProduct(product);
+    setConfigToppings([]);
+    setConfigDiscountType("none");
+    setConfigDiscountValue(0);
+    setConfigQuantity(1);
+    setConfigCartIndex(null); // Adding raw new
+    setConfigModalOpen(true);
+  };
+
+  const handleEditCartItemConfig = (item: CartItem, index: number) => {
+    setConfigProduct(item.product);
+    setConfigToppings(item.selectedToppings || []);
+    setConfigDiscountType(item.discount?.type || "none");
+    setConfigDiscountValue(item.discount?.value || 0);
+    setConfigQuantity(item.quantity);
+    setConfigCartIndex(index); // Editing old
+    setConfigModalOpen(true);
+  };
+
+  const handleSaveItemConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!configProduct) return;
+
+    const discountObj = configDiscountType !== "none" && configDiscountValue > 0
+      ? { type: configDiscountType, value: configDiscountValue }
+      : undefined;
+
+    const updatedItem: CartItem = {
+      product: configProduct,
+      quantity: configQuantity,
+      selectedToppings: configToppings.length > 0 ? configToppings : undefined,
+      discount: discountObj
+    };
+
     setCart((prevCart) => {
-      const exists = prevCart.find((item) => item.product.id === product.id);
-      if (exists) {
-        // limit by stock
-        if (exists.quantity >= product.stock) return prevCart;
-        return prevCart.map((item) => 
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
+      if (configCartIndex !== null) {
+        return prevCart.map((item, idx) => (idx === configCartIndex ? updatedItem : item));
+      } else {
+        // Group items if they match EXACT same toppings & discounts to keep cart clean
+        const existingIdx = prevCart.findIndex((item) => {
+          if (item.product.id !== configProduct.id) return false;
+          
+          const prevTops = item.selectedToppings || [];
+          const currTops = configToppings;
+          if (prevTops.length !== currTops.length) return false;
+          const matchTops = prevTops.every((pt) => currTops.some((ct) => ct.id === pt.id));
+          if (!matchTops) return false;
+
+          const prevDisc = item.discount;
+          if ((!prevDisc && discountObj) || (prevDisc && !discountObj)) return false;
+          if (prevDisc && discountObj) {
+            if (prevDisc.type !== discountObj.type || prevDisc.value !== discountObj.value) return false;
+          }
+
+          return true;
+        });
+
+        if (existingIdx > -1) {
+          return prevCart.map((item, idx) => {
+            if (idx === existingIdx) {
+              const newQty = Math.min(configProduct.stock, item.quantity + configQuantity);
+              return { ...item, quantity: newQty };
+            }
+            return item;
+          });
+        }
+
+        return [...prevCart, updatedItem];
       }
-      return [...prevCart, { product, quantity: 1 }];
     });
+
+    setConfigModalOpen(false);
+    setConfigProduct(null);
   };
 
   const removeFromCart = (productId: string) => {
+    // If we have custom toppings, can also identify by cart index, but remove by index or specific product is easier.
+    // For safety, let's remove by product ID, or if we want index removal:
     setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId));
   };
 
-  const updateQuantity = (productId: string, quantity: number) => {
+  const removeFromCartByIndex = (index: number) => {
+    setCart((prevCart) => prevCart.filter((_, idx) => idx !== index));
+  };
+
+  const updateQuantity = (index: number, quantity: number) => {
     if (quantity <= 0) {
-      removeFromCart(productId);
+      removeFromCartByIndex(index);
       return;
     }
     
-    const originalProduct = products.find((p) => p.id === productId);
-    if (!originalProduct) return;
-    
-    if (quantity > originalProduct.stock) {
-      quantity = originalProduct.stock; // Cap at max stock
-    }
-
     setCart((prevCart) =>
-      prevCart.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
-      )
+      prevCart.map((item, idx) => {
+        if (idx === index) {
+          const originalProduct = products.find((p) => p.id === item.product.id);
+          if (!originalProduct) return item;
+          const cappedQty = Math.min(quantity, originalProduct.stock);
+          return { ...item, quantity: cappedQty };
+        }
+        return item;
+      })
     );
   };
 
   const totalCartPrice = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    return cart.reduce((sum, item) => sum + getItemSubtotal(item), 0);
   }, [cart]);
 
   const totalCartCost = useMemo(() => {
@@ -122,15 +240,12 @@ export const CashierPOS: React.FC = () => {
     const standardBills = [5000, 10000, 20000, 50000, 100000];
     const suggestions = new Set<number>();
     
-    // Exact amount
     suggestions.add(totals);
     
-    // Find next largest bills
     standardBills.forEach((bill) => {
       if (bill > totals) {
         suggestions.add(bill);
       }
-      // multiples of largest bills
       const gap = Math.ceil(totals / bill) * bill;
       if (gap > totals && gap <= totals + 100000) {
         suggestions.add(gap);
@@ -145,7 +260,6 @@ export const CashierPOS: React.FC = () => {
     e.preventDefault();
     if (cart.length === 0) return;
 
-    // For non-tunai, cashPaid is automatically the total
     const finalCashPaid = paymentMethod === "non-tunai" ? totalCartPrice : cashPaid;
     const finalCashReturn = paymentMethod === "non-tunai" ? 0 : Math.max(0, finalCashPaid - totalCartPrice);
 
@@ -154,14 +268,22 @@ export const CashierPOS: React.FC = () => {
       return;
     }
 
-    const txItems = cart.map((item) => ({
-      productId: item.product.id,
-      name: item.product.name,
-      quantity: item.quantity,
-      price: item.product.price,
-      cost: item.product.cost,
-      subtotal: item.product.price * item.quantity,
-    }));
+    const txItems = cart.map((item) => {
+      const uPrice = getItemUnitPrice(item);
+      const discountAmount = getItemDiscountAmount(item) * item.quantity;
+      const subtotal = getItemSubtotal(item);
+      
+      return {
+        productId: item.product.id,
+        name: item.product.name,
+        quantity: item.quantity,
+        price: uPrice,
+        cost: item.product.cost,
+        subtotal: subtotal,
+        toppings: item.selectedToppings,
+        discountAmount: discountAmount
+      };
+    });
 
     const nextTx = addTransaction({
       items: txItems,
@@ -521,54 +643,94 @@ export const CashierPOS: React.FC = () => {
           </div>
 
           {/* Cart Items List */}
-          <div className="space-y-2.5 overflow-y-auto max-h-[280px] pr-1 py-1 scrollbar-thin">
-            {cart.map((item) => (
-              <div
-                id={`cart-item-${item.product.id}`}
-                key={item.product.id}
-                className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100"
-              >
-                <div className="min-w-0 flex-1 pr-2">
-                  <h5 className="text-xs font-semibold text-slate-800 truncate">
-                    {item.product.name}
-                  </h5>
-                  <span className="text-[10px] font-mono text-slate-500">
-                    {formatRupiah(item.product.price)} / pcs
-                  </span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden">
-                    <button
-                      id={`dec-qty-${item.product.id}`}
-                      onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                      className="p-1 px-2 text-slate-500 hover:bg-slate-100 cursor-pointer"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </button>
-                    <span className="px-2 text-xs font-bold text-slate-800 font-mono">
-                      {item.quantity}
-                    </span>
-                    <button
-                      id={`inc-qty-${item.product.id}`}
-                      onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                      className="p-1 px-2 text-slate-500 hover:bg-slate-100 cursor-pointer"
-                      disabled={item.quantity >= item.product.stock}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
+          <div className="space-y-2.5 overflow-y-auto max-h-[300px] pr-1 py-1 scrollbar-thin">
+            {cart.map((item, index) => {
+              const toppingsTotal = getItemToppingsTotal(item);
+              const discountTotal = getItemDiscountAmount(item) * item.quantity;
+              
+              return (
+                <div
+                  id={`cart-item-${item.product.id}-${index}`}
+                  key={`${item.product.id}-${index}`}
+                  className="flex flex-col p-2.5 bg-slate-50 rounded-xl border border-slate-100 gap-1.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <h5 className="text-xs font-semibold text-slate-800 truncate">
+                        {item.product.name}
+                      </h5>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        <span className="text-[10px] font-mono text-slate-550 bg-white border border-slate-200 px-1 py-0.2 rounded-sm">
+                          {formatRupiah(getItemFinalUnitPrice(item))} / pcs
+                        </span>
+                        {item.discount && (
+                          <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-250 px-1 py-0.2 rounded-sm capitalize">
+                            Disc: -{item.discount.type === "percentage" ? `${item.discount.value}%` : formatRupiah(item.discount.value)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden">
+                        <button
+                          id={`dec-qty-${item.product.id}-${index}`}
+                          onClick={() => updateQuantity(index, item.quantity - 1)}
+                          className="p-1 px-1.5 text-slate-500 hover:bg-slate-100 cursor-pointer"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="px-1.5 text-xs font-bold text-slate-800 font-mono">
+                          {item.quantity}
+                        </span>
+                        <button
+                          id={`inc-qty-${item.product.id}-${index}`}
+                          onClick={() => updateQuantity(index, item.quantity + 1)}
+                          className="p-1 px-1.5 text-slate-500 hover:bg-slate-100 cursor-pointer"
+                          disabled={item.quantity >= item.product.stock}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleEditCartItemConfig(item, index)}
+                        className="p-1 text-slate-505 hover:bg-emerald-50 hover:text-emerald-650 rounded-lg transition-colors cursor-pointer border border-slate-200 bg-white"
+                        title="Edit Topping & Diskon"
+                      >
+                        <Sliders className="h-3.5 w-3.5" />
+                      </button>
+                      
+                      <button
+                        id={`remove-cart-${item.product.id}-${index}`}
+                        onClick={() => removeFromCartByIndex(index)}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  
-                  <button
-                    id={`remove-cart-${item.product.id}`}
-                    onClick={() => removeFromCart(item.product.id)}
-                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+
+                  {/* Toppings tags under item */}
+                  {item.selectedToppings && item.selectedToppings.length > 0 && (
+                    <div className="flex flex-wrap gap-1 border-t border-slate-200/50 pt-1.5">
+                      {item.selectedToppings.map((top) => (
+                        <span key={top.id} className="text-[9px] bg-slate-200/60 text-slate-700 px-1.5 py-0.5 rounded-md font-sans">
+                          +{top.name} ({formatRupiah(top.price)})
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Subtotal line display */}
+                  <div className="flex justify-between items-center text-[10px] text-slate-500 border-t border-slate-100 pt-1">
+                    <span>Subtotal:</span>
+                    <span className="font-bold text-slate-900 font-mono">{formatRupiah(getItemSubtotal(item))}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {cart.length === 0 && (
               <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center">
@@ -1311,6 +1473,253 @@ Laporan otomatis via ${storeSettings.storeName} POS.`}
         )}
       </AnimatePresence>
 
-    </div>
-  );
-};
+      {/* MODAL: CONFIG TOPPINGS AND DISCOUNT FOR CART ITEM */}
+      <AnimatePresence>
+          {configModalOpen && configProduct && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 z-55">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-xl border border-slate-100 text-slate-850"
+              >
+                <div className="p-4 bg-slate-950 text-white flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 bg-emerald-500 rounded-lg">
+                      <Sliders className="h-4 w-4 text-white" />
+                    </span>
+                    <h3 className="font-semibold text-sm">Atur Topping & Diskon</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfigModalOpen(false)}
+                    className="p-1 hover:bg-white/10 rounded-full text-slate-400 hover:text-white"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveItemConfig} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">{configProduct.name}</h4>
+                    <p className="text-[11px] text-slate-450 font-medium">Harga dasar: {formatRupiah(configProduct.price)}</p>
+                  </div>
+
+                  {/* QUANTITY SECTION */}
+                  <div className="bg-slate-50 border border-slate-150 p-3.5 rounded-2xl flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-700">Atur Jumlah:</span>
+                    <div className="flex items-center border border-slate-205 rounded-xl bg-white overflow-hidden shadow-xs">
+                      <button
+                        type="button"
+                        onClick={() => setConfigQuantity(prev => Math.max(1, prev - 1))}
+                        className="p-1.5 px-3 hover:bg-slate-50 transition-colors text-slate-600 font-bold"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="px-3 text-sm font-extrabold text-slate-850 font-mono">
+                        {configQuantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setConfigQuantity(prev => Math.min(configProduct.stock, prev + 1))}
+                        className="p-1.5 px-3 hover:bg-slate-50 transition-colors text-slate-600 font-bold"
+                        disabled={configQuantity >= configProduct.stock}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* TOPPINGS OPTIONS */}
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">Pilih Extra Toppings:</span>
+                    <div className="max-h-[150px] overflow-y-auto space-y-1.5 border border-slate-100 rounded-xl p-2 bg-slate-50/50">
+                      {toppings.map((top) => {
+                        const isChecked = configToppings.some((t) => t.id === top.id);
+                        return (
+                          <label
+                            key={top.id}
+                            className={`flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                              isChecked
+                                ? "bg-emerald-50/50 border-emerald-500 font-semibold"
+                                : "bg-white border-slate-200"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setConfigToppings(prev => [...prev, top]);
+                                  } else {
+                                    setConfigToppings(prev => prev.filter(t => t.id !== top.id));
+                                  }
+                                }}
+                                className="accent-emerald-600 h-3.5 w-3.5 cursor-pointer rounded-sm"
+                              />
+                              <span className="text-slate-805">{top.name}</span>
+                            </div>
+                            <span className="font-mono text-emerald-600 font-bold">+{formatRupiah(top.price)}</span>
+                          </label>
+                        );
+                      })}
+                      {toppings.length === 0 && (
+                        <div className="text-center py-4 text-[10px] text-slate-450">
+                          Tidak ada topping yang dikonfigurasi di panel admin.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ITEM-LEVEL DISCOUNT */}
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">Terapkan Diskon Barang:</span>
+                    <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfigDiscountType("none");
+                          setConfigDiscountValue(0);
+                        }}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
+                          configDiscountType === "none"
+                            ? "bg-white text-slate-800 shadow-xs"
+                            : "text-slate-550 hover:text-slate-700"
+                        }`}
+                      >
+                        Bebas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfigDiscountType("percentage");
+                          setConfigDiscountValue(0);
+                        }}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
+                          configDiscountType === "percentage"
+                            ? "bg-white text-slate-800 shadow-xs"
+                            : "text-slate-550 hover:text-slate-700"
+                        }`}
+                      >
+                        Persen (%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfigDiscountType("nominal");
+                          setConfigDiscountValue(0);
+                        }}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
+                          configDiscountType === "nominal"
+                            ? "bg-white text-slate-800 shadow-xs"
+                            : "text-slate-550 hover:text-slate-700"
+                        }`}
+                      >
+                        Nominal (Rp)
+                      </button>
+                    </div>
+
+                    {configDiscountType !== "none" && (
+                      <div className="pt-1">
+                        <div className="relative font-sans">
+                          <span className="absolute left-2.5 top-2.5 text-xs font-semibold text-slate-650">
+                            {configDiscountType === "percentage" ? "%" : "Rp"}
+                          </span>
+                          <input
+                            type="number"
+                            required
+                            placeholder={configDiscountType === "percentage" ? "Contoh: 10" : "Contoh: 2000"}
+                            className="w-full pl-8 pr-3 py-1.5 border border-slate-250 bg-white rounded-lg text-xs"
+                            value={configDiscountValue || ""}
+                            onChange={(e) => setConfigDiscountValue(e.target.value === "" ? 0 : Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* CALCULATIONS AND RESULT */}
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-150 text-xs space-y-1.5 font-sans">
+                    <div className="flex justify-between text-slate-505 font-medium">
+                      <span>Harga Satuan Item:</span>
+                      <span>{formatRupiah(configProduct.price)}</span>
+                    </div>
+                    {configToppings.length > 0 && (
+                      <div className="flex justify-between text-emerald-600 font-medium">
+                        <span>Total Topping (+):</span>
+                        <span>+{formatRupiah(configToppings.reduce((sum, t) => sum + t.price, 0))}</span>
+                      </div>
+                    )}
+                    {configDiscountType !== "none" && configDiscountValue > 0 && (
+                      <div className="flex justify-between text-amber-700 font-medium">
+                        <span>Diskon Item (-):</span>
+                        <span>
+                          -{formatRupiah(
+                            configDiscountType === "percentage"
+                              ? (configProduct.price + configToppings.reduce((sum, t) => sum + t.price, 0)) * (configDiscountValue / 100)
+                              : configDiscountValue
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-slate-900 border-t border-slate-200/50 pt-1.5 font-bold">
+                      <span>Subtotal per Pcs:</span>
+                      <span>
+                        {formatRupiah(
+                          Math.max(
+                            0,
+                            (configProduct.price + configToppings.reduce((sum, t) => sum + t.price, 0)) -
+                            (configDiscountType === "none"
+                              ? 0
+                              : configDiscountType === "percentage"
+                              ? (configProduct.price + configToppings.reduce((sum, t) => sum + t.price, 0)) * (configDiscountValue / 100)
+                              : configDiscountValue)
+                          )
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-950 font-extrabold text-[13px] border-t border-slate-200 pt-1">
+                      <span>Subtotal Total ({configQuantity}x):</span>
+                      <span className="font-mono text-slate-950 text-sm">
+                        {formatRupiah(
+                          Math.max(
+                            0,
+                            ((configProduct.price + configToppings.reduce((sum, t) => sum + t.price, 0)) -
+                            (configDiscountType === "none"
+                              ? 0
+                              : configDiscountType === "percentage"
+                              ? (configProduct.price + configToppings.reduce((sum, t) => sum + t.price, 0)) * (configDiscountValue / 100)
+                              : configDiscountValue))
+                          ) * configQuantity
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* MODAL ACTIONS */}
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfigModalOpen(false)}
+                      className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600 cursor-pointer text-center"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs text-center font-sans flex items-center justify-center gap-1.5"
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5" />
+                      {configCartIndex !== null ? "Perbarui" : "Tambahkan"}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+      </div>
+    );
+  };

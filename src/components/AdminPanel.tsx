@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useApp } from "../AppContext";
-import { Product, Category, StockLog } from "../types";
+import { Product, Category, StockLog, Topping } from "../types";
 import { formatRupiah, formatIndoDate } from "../utils/format";
 import { 
   Plus, Edit, Trash2, Package, TrendingUp, TrendingDown,
@@ -32,11 +32,15 @@ export const AdminPanel: React.FC = () => {
     stockLogs,
     addCategory,
     deleteCategory,
-    adjustStock
+    adjustStock,
+    toppings,
+    addTopping,
+    updateTopping,
+    deleteTopping
   } = useApp();
 
   // Active Tabs in Admin Panel
-  const [adminTab, setAdminTab] = useState<"inventory" | "categories" | "stock-history" | "ops-expenses" | "pl" | "settings">("inventory");
+  const [adminTab, setAdminTab] = useState<"inventory" | "categories" | "toppings" | "stock-history" | "ops-expenses" | "pl" | "settings">("inventory");
 
   // Custom State-driven Confirmation Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -68,6 +72,14 @@ export const AdminPanel: React.FC = () => {
 
   // State for New Category Form
   const [newCatName, setNewCatName] = useState("");
+
+  // State for Topping Form
+  const [newToppingName, setNewToppingName] = useState("");
+  const [newToppingPrice, setNewToppingPrice] = useState<number | "">("");
+  const [editingTopping, setEditingTopping] = useState<Topping | null>(null);
+  const [editToppingName, setEditToppingName] = useState("");
+  const [editToppingPrice, setEditToppingPrice] = useState<number | "">("");
+  const [showToppingEditModal, setShowToppingEditModal] = useState(false);
 
   // Search & Filter state for Stock History Log
   const [searchHistoryQuery, setSearchHistoryQuery] = useState("");
@@ -177,6 +189,56 @@ export const AdminPanel: React.FC = () => {
     if (!newCatName.trim()) return;
     addCategory(newCatName.trim());
     setNewCatName("");
+  };
+
+  // Create Topping
+  const handleCreateTopping = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newToppingName.trim()) {
+      alert("Nama topping tidak boleh kosong");
+      return;
+    }
+    const price = newToppingPrice === "" ? 0 : Number(newToppingPrice);
+    addTopping({ name: newToppingName.trim(), price });
+    setNewToppingName("");
+    setNewToppingPrice("");
+  };
+
+  // Delete Topping
+  const handleDeleteToppingClick = (topping: Topping) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Konfirmasi Hapus Topping",
+      message: `Yakin ingin menghapus topping "${topping.name}" secara permanen?`,
+      onConfirm: () => {
+        deleteTopping(topping.id);
+      }
+    });
+  };
+
+  // Submit Edit Topping Form
+  const handleUpdateToppingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTopping) return;
+    if (!editToppingName.trim()) {
+      alert("Nama topping tidak boleh kosong");
+      return;
+    }
+    const price = editToppingPrice === "" ? 0 : Number(editToppingPrice);
+    updateTopping({
+      id: editingTopping.id,
+      name: editToppingName.trim(),
+      price
+    });
+    setEditingTopping(null);
+    setShowToppingEditModal(false);
+  };
+
+  const handleEditToppingClick = (topping: Topping) => {
+    setEditingTopping(topping);
+    setEditToppingName(topping.name);
+    setEditToppingPrice(topping.price);
+    setShowToppingEditModal(true);
   };
 
   // Delete Category with Product safety check
@@ -317,6 +379,18 @@ export const AdminPanel: React.FC = () => {
         >
           <Tag className="h-4 w-4" />
           Kategori Produk
+        </button>
+        <button
+          id="tab-admin-toppings"
+          onClick={() => setAdminTab("toppings")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+            adminTab === "toppings"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <Layers className="h-4 w-4" />
+          Extra Topping
         </button>
         <button
           id="tab-admin-stock-history"
@@ -594,6 +668,169 @@ export const AdminPanel: React.FC = () => {
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* TAB: TOPPINGS MANAGEMENT (EXTRA TOPPINGS) */}
+        {adminTab === "toppings" && (
+          <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Kelola Extra Topping</h3>
+                <p className="text-xs text-slate-500">Buat dan atur variasi topping tambahan beserta harganya untuk menu makanan/minuman.</p>
+              </div>
+              <span className="text-xs bg-slate-105 text-slate-700 px-3 py-1.5 rounded-full font-bold border border-slate-200">
+                Total Topping: {toppings.length}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* Add topping form */}
+              <div className="md:col-span-1 bg-slate-50 border border-slate-150 rounded-2xl p-5 space-y-4">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1">
+                  <Plus className="h-3.5 w-3.5 text-emerald-600" />
+                  Buat Topping Baru
+                </h4>
+
+                <form onSubmit={handleCreateTopping} className="space-y-4">
+                  <div className="space-y-1">
+                    <label htmlFor="toppingNameInput" className="text-xs font-semibold text-slate-600 block">Nama Topping</label>
+                    <input
+                      id="toppingNameInput"
+                      type="text"
+                      placeholder="Contoh: Bubble, Extra Keju..."
+                      className="w-full px-3 py-1.5 bg-white border border-slate-250 rounded-lg text-xs"
+                      value={newToppingName}
+                      onChange={(e) => setNewToppingName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="toppingPriceInput" className="text-xs font-semibold text-slate-600 block">Harga Tambahan (Rp)</label>
+                    <input
+                      id="toppingPriceInput"
+                      type="number"
+                      placeholder="Contoh: 3000"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-250 rounded-lg text-xs"
+                      value={newToppingPrice}
+                      onChange={(e) => setNewToppingPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    Tambah Topping
+                  </button>
+                </form>
+              </div>
+
+              {/* Toppings list */}
+              <div className="md:col-span-2 space-y-3">
+                <h4 className="font-bold text-slate-800 text-sm">Daftar Topping Tersedia</h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {toppings.map((top) => (
+                    <div key={top.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex justify-between items-center hover:border-slate-300 transition-all">
+                      <div className="space-y-1">
+                        <span className="font-bold text-slate-900 text-xs block">{top.name}</span>
+                        <span className="text-xs font-bold text-emerald-650 block font-mono">+{formatRupiah(top.price)}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleEditToppingClick(top)}
+                          className="p-1.5 text-slate-600 bg-slate-50 border border-slate-150 hover:bg-slate-100 rounded-xl font-bold text-[10px] transition-colors cursor-pointer"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteToppingClick(top)}
+                          className="p-1.5 text-rose-600 bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl font-bold text-[10px] transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {toppings.length === 0 && (
+                    <div className="sm:col-span-2 text-center py-8 text-slate-400 text-xs">
+                      Belum ada topping kustom. Buat topping baru di form sebelah kiri.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* TOPPING EDIT OVERLAY MODAL */}
+        {showToppingEditModal && editingTopping && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 z-50">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-sm border border-slate-100 shadow-xl overflow-hidden text-slate-850"
+            >
+              <div className="p-4 bg-slate-950/95 text-white flex justify-between items-center">
+                <h3 className="font-semibold text-sm">
+                  Ubah Topping: {editingTopping.name}
+                </h3>
+                <button
+                  onClick={() => setShowToppingEditModal(false)}
+                  className="p-1 hover:bg-white/10 rounded-full cursor-pointer text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateToppingSubmit} className="p-5 space-y-4">
+                <div className="space-y-1">
+                  <label htmlFor="editToppingName" className="text-xs font-semibold text-slate-600 block">Nama Topping</label>
+                  <input
+                    id="editToppingName"
+                    type="text"
+                    required
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    value={editToppingName}
+                    onChange={(e) => setEditToppingName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="editToppingPrice" className="text-xs font-semibold text-slate-650 block">Harga Tambahan (Rp)</label>
+                  <input
+                    id="editToppingPrice"
+                    type="number"
+                    required
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    value={editToppingPrice || ""}
+                    onChange={(e) => setEditToppingPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowToppingEditModal(false)}
+                    className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600 cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs font-sans"
+                  >
+                    Simpan Perubahan
+                  </button>
+                </div>
+              </form>
+            </motion.div>
           </div>
         )}
 
