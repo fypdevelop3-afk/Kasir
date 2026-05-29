@@ -5,12 +5,12 @@
 
 import React, { useState, useMemo } from "react";
 import { useApp } from "../AppContext";
-import { Product, Category, StockLog, Topping } from "../types";
+import { Product, Category, StockLog, Topping, Discount } from "../types";
 import { formatRupiah, formatIndoDate } from "../utils/format";
 import { 
   Plus, Edit, Trash2, Package, TrendingUp, TrendingDown,
   DollarSign, Landmark, RefreshCw, AlertCircle, ShoppingCart, 
-  Settings, Save, X, Calendar, Layers, Info, History, Tag, Sliders, Search, AlertTriangle
+  Settings, Save, X, Calendar, Layers, Info, History, Tag, Sliders, Search, AlertTriangle, Percent
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -36,11 +36,15 @@ export const AdminPanel: React.FC = () => {
     toppings,
     addTopping,
     updateTopping,
-    deleteTopping
+    deleteTopping,
+    discounts,
+    addDiscount,
+    updateDiscount,
+    deleteDiscount
   } = useApp();
 
   // Active Tabs in Admin Panel
-  const [adminTab, setAdminTab] = useState<"inventory" | "categories" | "toppings" | "stock-history" | "ops-expenses" | "pl" | "settings">("inventory");
+  const [adminTab, setAdminTab] = useState<"inventory" | "categories" | "toppings" | "discounts" | "stock-history" | "ops-expenses" | "pl" | "settings">("inventory");
 
   // Custom State-driven Confirmation Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -80,6 +84,16 @@ export const AdminPanel: React.FC = () => {
   const [editToppingName, setEditToppingName] = useState("");
   const [editToppingPrice, setEditToppingPrice] = useState<number | "">("");
   const [showToppingEditModal, setShowToppingEditModal] = useState(false);
+
+  // State for Discount Form
+  const [newDiscountName, setNewDiscountName] = useState("");
+  const [newDiscountType, setNewDiscountType] = useState<"percentage" | "nominal">("percentage");
+  const [newDiscountValue, setNewDiscountValue] = useState<number | "">("");
+  const [editingDiscount, setEditingDiscount] = useState<Discount | null>(null);
+  const [editDiscountName, setEditDiscountName] = useState("");
+  const [editDiscountType, setEditDiscountType] = useState<"percentage" | "nominal">("percentage");
+  const [editDiscountValue, setEditDiscountValue] = useState<number | "">("");
+  const [showDiscountEditModal, setShowDiscountEditModal] = useState(false);
 
   // Search & Filter state for Stock History Log
   const [searchHistoryQuery, setSearchHistoryQuery] = useState("");
@@ -241,6 +255,59 @@ export const AdminPanel: React.FC = () => {
     setShowToppingEditModal(true);
   };
 
+  // Create Discount
+  const handleCreateDiscount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDiscountName.trim()) {
+      alert("Nama diskon tidak boleh kosong");
+      return;
+    }
+    const val = newDiscountValue === "" ? 0 : Number(newDiscountValue);
+    addDiscount({ name: newDiscountName.trim(), type: newDiscountType, value: val });
+    setNewDiscountName("");
+    setNewDiscountValue("");
+    setNewDiscountType("percentage");
+  };
+
+  // Delete Discount
+  const handleDeleteDiscountClick = (discount: Discount) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Konfirmasi Hapus Diskon",
+      message: `Yakin ingin menghapus diskon "${discount.name}" secara permanen?`,
+      onConfirm: () => {
+        deleteDiscount(discount.id);
+      }
+    });
+  };
+
+  // Submit Edit Discount Form
+  const handleUpdateDiscountSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDiscount) return;
+    if (!editDiscountName.trim()) {
+      alert("Nama diskon tidak boleh kosong");
+      return;
+    }
+    const val = editDiscountValue === "" ? 0 : Number(editDiscountValue);
+    updateDiscount({
+      id: editingDiscount.id,
+      name: editDiscountName.trim(),
+      type: editDiscountType,
+      value: val
+    });
+    setEditingDiscount(null);
+    setShowDiscountEditModal(false);
+  };
+
+  const handleEditDiscountClick = (discount: Discount) => {
+    setEditingDiscount(discount);
+    setEditDiscountName(discount.name);
+    setEditDiscountType(discount.type);
+    setEditDiscountValue(discount.value);
+    setShowDiscountEditModal(true);
+  };
+
   // Delete Category with Product safety check
   const handleDeleteCategoryClick = (category: Category) => {
     const usageCount = products.filter(p => p.category === category.name).length;
@@ -391,6 +458,18 @@ export const AdminPanel: React.FC = () => {
         >
           <Layers className="h-4 w-4" />
           Extra Topping
+        </button>
+        <button
+          id="tab-admin-discounts"
+          onClick={() => setAdminTab("discounts")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+            adminTab === "discounts"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <Percent className="h-4 w-4" />
+          Config Diskon
         </button>
         <button
           id="tab-admin-stock-history"
@@ -768,6 +847,137 @@ export const AdminPanel: React.FC = () => {
           </div>
         )}
 
+        {/* TAB: DISCOUNTS MANAGEMENT (CONFIG DISKON) */}
+        {adminTab === "discounts" && (
+          <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Kelola Template Diskon</h3>
+                <p className="text-xs text-slate-500">Buat dan atur template diskon standar (persen atau nominal rupiah) yang bisa dipilih saat konfigurasi item kasir.</p>
+              </div>
+              <span className="text-xs bg-slate-105 text-slate-700 px-3 py-1.5 rounded-full font-bold border border-slate-200">
+                Total Template Diskon: {discounts?.length || 0}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* Add discount form */}
+              <div className="md:col-span-1 bg-slate-50 border border-slate-150 rounded-2xl p-5 space-y-4">
+                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1">
+                  <Plus className="h-3.5 w-3.5 text-emerald-600" />
+                  Buat Template Baru
+                </h4>
+
+                <form onSubmit={handleCreateDiscount} className="space-y-4">
+                  <div className="space-y-1">
+                    <label htmlFor="discountNameInput" className="text-xs font-semibold text-slate-600 block">Nama Diskon</label>
+                    <input
+                      id="discountNameInput"
+                      type="text"
+                      placeholder="Contoh: Diskon Karyawan, Promo Member..."
+                      className="w-full px-3 py-1.5 bg-white border border-slate-250 rounded-lg text-xs"
+                      value={newDiscountName}
+                      onChange={(e) => setNewDiscountName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600 block">Tipe Diskon</label>
+                    <div className="flex bg-slate-200/60 p-1 rounded-xl gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setNewDiscountType("percentage")}
+                        className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          newDiscountType === "percentage"
+                            ? "bg-white text-slate-800 shadow-xs font-extrabold"
+                            : "text-slate-550 hover:text-slate-750"
+                        }`}
+                      >
+                        Persen (%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewDiscountType("nominal")}
+                        className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          newDiscountType === "nominal"
+                            ? "bg-white text-slate-800 shadow-xs font-extrabold"
+                            : "text-slate-550 hover:text-slate-750"
+                        }`}
+                      >
+                        Nominal (Rp)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="discountValueInput" className="text-xs font-semibold text-slate-600 block">
+                      Nilai {newDiscountType === "percentage" ? "Diskon (%)" : "Potongan (Rp)"}
+                    </label>
+                    <input
+                      id="discountValueInput"
+                      type="number"
+                      placeholder={newDiscountType === "percentage" ? "Contoh: 10" : "Contoh: 5000"}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-250 rounded-lg text-xs"
+                      value={newDiscountValue}
+                      onChange={(e) => setNewDiscountValue(e.target.value === "" ? "" : Number(e.target.value))}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    Tambah Template Diskon
+                  </button>
+                </form>
+              </div>
+
+              {/* Discounts list */}
+              <div className="md:col-span-2 space-y-3">
+                <h4 className="font-bold text-slate-800 text-sm">Daftar Template Diskon Tersedia</h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(discounts || []).map((disc) => (
+                    <div key={disc.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex justify-between items-center hover:border-slate-300 transition-all font-sans">
+                      <div className="space-y-1">
+                        <span className="font-bold text-slate-900 text-xs block">{disc.name}</span>
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg inline-block">
+                          {disc.type === "percentage" ? `Diskon: -${disc.value}%` : `Diskon: -${formatRupiah(disc.value)}`}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleEditDiscountClick(disc)}
+                          className="p-1.5 text-slate-600 bg-slate-50 border border-slate-150 hover:bg-slate-100 rounded-xl font-bold text-[10px] transition-colors cursor-pointer"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDiscountClick(disc)}
+                          className="p-1.5 text-rose-600 bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl font-bold text-[10px] transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {(!discounts || discounts.length === 0) && (
+                    <div className="sm:col-span-2 text-center py-8 text-slate-400 text-xs">
+                      Belum ada template diskon. Buat template baru di form sebelah kiri.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
         {/* TOPPING EDIT OVERLAY MODAL */}
         {showToppingEditModal && editingTopping && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 z-50">
@@ -818,6 +1028,102 @@ export const AdminPanel: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowToppingEditModal(false)}
+                    className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600 cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs font-sans"
+                  >
+                    Simpan Perubahan
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* DISCOUNT EDIT OVERLAY MODAL */}
+        {showDiscountEditModal && editingDiscount && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 z-50">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-sm border border-slate-100 shadow-xl overflow-hidden text-slate-850"
+            >
+              <div className="p-4 bg-slate-950/95 text-white flex justify-between items-center">
+                <h3 className="font-semibold text-sm">
+                  Ubah Template Diskon: {editingDiscount.name}
+                </h3>
+                <button
+                  onClick={() => setShowDiscountEditModal(false)}
+                  className="p-1 hover:bg-white/10 rounded-full cursor-pointer text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateDiscountSubmit} className="p-5 space-y-4">
+                <div className="space-y-1">
+                  <label htmlFor="editDiscountName" className="text-xs font-semibold text-slate-600 block">Nama Diskon</label>
+                  <input
+                    id="editDiscountName"
+                    type="text"
+                    required
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    value={editDiscountName}
+                    onChange={(e) => setEditDiscountName(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-600 block">Tipe Diskon</label>
+                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditDiscountType("percentage")}
+                      className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        editDiscountType === "percentage"
+                          ? "bg-white text-slate-800 shadow-xs font-extrabold"
+                          : "text-slate-550 hover:text-slate-700"
+                      }`}
+                    >
+                      Persen (%)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditDiscountType("nominal")}
+                      className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        editDiscountType === "nominal"
+                          ? "bg-white text-slate-800 shadow-xs font-extrabold"
+                          : "text-slate-550 hover:text-slate-700"
+                      }`}
+                    >
+                      Nominal (Rp)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="editDiscountValue" className="text-xs font-semibold text-slate-655 block">
+                    Nilai {editDiscountType === "percentage" ? "Diskon (%)" : "Potongan (Rp)"}
+                  </label>
+                  <input
+                    id="editDiscountValue"
+                    type="number"
+                    required
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    value={editDiscountValue || ""}
+                    onChange={(e) => setEditDiscountValue(e.target.value === "" ? "" : Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDiscountEditModal(false)}
                     className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600 cursor-pointer"
                   >
                     Batal

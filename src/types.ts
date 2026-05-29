@@ -45,12 +45,20 @@ export interface SelectedTopping {
   price: number;
 }
 
+export interface Discount {
+  id: string;
+  name: string;
+  type: "percentage" | "nominal";
+  value: number;
+}
+
 export interface CartItem {
   product: Product;
   quantity: number;
   selectedToppings?: SelectedTopping[];
   discount?: {
-    type: "percentage" | "fixed";
+    id?: string;
+    type: "percentage" | "nominal";
     value: number; // nilai persentase (e.g. 10) atau nominal rupiah (e.g. 5000)
   };
 }

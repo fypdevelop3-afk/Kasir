@@ -10,7 +10,7 @@ import { formatRupiah, formatIndoDate } from "../utils/format";
 import { 
   Search, ShoppingCart, Plus, Minus, Trash2, ShieldAlert, 
   CheckCircle, Landmark, Receipt, Sparkles, User, FileText, 
-  X, AlertTriangle, ArrowRight, CirclePlus, MessageSquare, Send, Sliders
+  X, AlertTriangle, ArrowRight, CirclePlus, MessageSquare, Send, Sliders, Percent
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -25,7 +25,8 @@ export const CashierPOS: React.FC = () => {
     openShift, 
     closeShift, 
     storeSettings,
-    toppings 
+    toppings,
+    discounts
   } = useApp();
   
   // State for POS
@@ -43,6 +44,7 @@ export const CashierPOS: React.FC = () => {
   const [configToppings, setConfigToppings] = useState<SelectedTopping[]>([]);
   const [configDiscountType, setConfigDiscountType] = useState<"none" | "percentage" | "nominal">("none");
   const [configDiscountValue, setConfigDiscountValue] = useState<number>(0);
+  const [configDiscountId, setConfigDiscountId] = useState<string | undefined>(undefined);
   const [configQuantity, setConfigQuantity] = useState<number>(1);
   const [configCartIndex, setConfigCartIndex] = useState<number | null>(null);
   
@@ -88,20 +90,37 @@ export const CashierPOS: React.FC = () => {
   // Helper calculations for CartItem with toppings and discounts
   const getItemToppingsTotal = (item: CartItem): number => {
     if (!item.selectedToppings) return 0;
-    return item.selectedToppings.reduce((sum, t) => sum + t.price, 0);
+    return item.selectedToppings.reduce((sum, t) => {
+      const currentTopping = toppings.find((top) => top.id === t.id);
+      return sum + (currentTopping ? currentTopping.price : t.price);
+    }, 0);
   };
 
   const getItemUnitPrice = (item: CartItem): number => {
-    return item.product.price + getItemToppingsTotal(item);
+    const freshProduct = products.find((p) => p.id === item.product.id) || item.product;
+    return freshProduct.price + getItemToppingsTotal(item);
   };
 
   const getItemDiscountAmount = (item: CartItem): number => {
     if (!item.discount) return 0;
     const basePrice = getItemUnitPrice(item);
-    if (item.discount.type === "percentage") {
-      return basePrice * (item.discount.value / 100);
+    
+    let currentDiscount = item.discount;
+    if (item.discount.id) {
+      const found = discounts.find(d => d.id === item.discount?.id);
+      if (found) {
+        currentDiscount = {
+          id: found.id,
+          type: found.type,
+          value: found.value
+        };
+      }
+    }
+
+    if (currentDiscount.type === "percentage") {
+      return basePrice * (currentDiscount.value / 100);
     } else {
-      return item.discount.value;
+      return currentDiscount.value;
     }
   };
 
@@ -124,6 +143,7 @@ export const CashierPOS: React.FC = () => {
     setConfigToppings([]);
     setConfigDiscountType("none");
     setConfigDiscountValue(0);
+    setConfigDiscountId(undefined);
     setConfigQuantity(1);
     setConfigCartIndex(null); // Adding raw new
     setConfigModalOpen(true);
@@ -134,6 +154,7 @@ export const CashierPOS: React.FC = () => {
     setConfigToppings(item.selectedToppings || []);
     setConfigDiscountType(item.discount?.type || "none");
     setConfigDiscountValue(item.discount?.value || 0);
+    setConfigDiscountId(item.discount?.id);
     setConfigQuantity(item.quantity);
     setConfigCartIndex(index); // Editing old
     setConfigModalOpen(true);
@@ -144,7 +165,7 @@ export const CashierPOS: React.FC = () => {
     if (!configProduct) return;
 
     const discountObj = configDiscountType !== "none" && configDiscountValue > 0
-      ? { type: configDiscountType, value: configDiscountValue }
+      ? { id: configDiscountId, type: configDiscountType, value: configDiscountValue }
       : undefined;
 
     const updatedItem: CartItem = {
@@ -171,7 +192,7 @@ export const CashierPOS: React.FC = () => {
           const prevDisc = item.discount;
           if ((!prevDisc && discountObj) || (prevDisc && !discountObj)) return false;
           if (prevDisc && discountObj) {
-            if (prevDisc.type !== discountObj.type || prevDisc.value !== discountObj.value) return false;
+            if (prevDisc.id !== discountObj.id || prevDisc.type !== discountObj.type || prevDisc.value !== discountObj.value) return false;
           }
 
           return true;
@@ -1572,71 +1593,124 @@ Laporan otomatis via ${storeSettings.storeName} POS.`}
                     </div>
                   </div>
 
-                  {/* ITEM-LEVEL DISCOUNT */}
+                  {/* ITEM-LEVEL DISCOUNT (SELEKSI TEMPLATE DISKON) */}
                   <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-slate-700 block">Terapkan Diskon Barang:</span>
-                    <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfigDiscountType("none");
-                          setConfigDiscountValue(0);
-                        }}
-                        className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
-                          configDiscountType === "none"
-                            ? "bg-white text-slate-800 shadow-xs"
-                            : "text-slate-550 hover:text-slate-700"
-                        }`}
-                      >
-                        Bebas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfigDiscountType("percentage");
-                          setConfigDiscountValue(0);
-                        }}
-                        className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
-                          configDiscountType === "percentage"
-                            ? "bg-white text-slate-800 shadow-xs"
-                            : "text-slate-550 hover:text-slate-700"
-                        }`}
-                      >
-                        Persen (%)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfigDiscountType("nominal");
-                          setConfigDiscountValue(0);
-                        }}
-                        className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
-                          configDiscountType === "nominal"
-                            ? "bg-white text-slate-800 shadow-xs"
-                            : "text-slate-550 hover:text-slate-700"
-                        }`}
-                      >
-                        Nominal (Rp)
-                      </button>
+                    <span className="text-xs font-bold text-slate-700 block flex items-center gap-1">
+                      <Percent className="h-3.5 w-3.5 text-amber-600" /> Terapkan Diskon Barang:
+                    </span>
+                    <div className="max-h-[140px] overflow-y-auto space-y-1.5 border border-slate-100 rounded-xl p-2 bg-slate-50/50">
+                      {discounts && discounts.map((disc) => {
+                        const isSelected = configDiscountId === disc.id;
+                        return (
+                          <button
+                            key={disc.id}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                // Toggle off
+                                setConfigDiscountType("none");
+                                setConfigDiscountValue(0);
+                                setConfigDiscountId(undefined);
+                              } else {
+                                // Select discount
+                                setConfigDiscountType(disc.type);
+                                setConfigDiscountValue(disc.value);
+                                setConfigDiscountId(disc.id);
+                              }
+                            }}
+                            className={`w-full flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition-all ${
+                              isSelected
+                                ? "bg-amber-50 border-amber-500 font-extrabold text-amber-900"
+                                : "bg-white border-slate-200 text-slate-750 hover:border-amber-300"
+                            }`}
+                          >
+                            <span className="font-semibold text-[11px]">{disc.name}</span>
+                            <span className="font-sans font-bold bg-amber-100 px-2 py-0.5 rounded text-amber-800 text-[10px]">
+                              {disc.type === "percentage" ? `-${disc.value}%` : `-${formatRupiah(disc.value)}`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {(!discounts || discounts.length === 0) && (
+                        <div className="text-center py-4 text-[10px] text-slate-450">
+                          Tidak ada template diskon yang dikonfigurasi di panel admin.
+                        </div>
+                      )}
                     </div>
 
-                    {configDiscountType !== "none" && (
-                      <div className="pt-1">
-                        <div className="relative font-sans">
-                          <span className="absolute left-2.5 top-2.5 text-xs font-semibold text-slate-650">
-                            {configDiscountType === "percentage" ? "%" : "Rp"}
-                          </span>
-                          <input
-                            type="number"
-                            required
-                            placeholder={configDiscountType === "percentage" ? "Contoh: 10" : "Contoh: 2000"}
-                            className="w-full pl-8 pr-3 py-1.5 border border-slate-250 bg-white rounded-lg text-xs"
-                            value={configDiscountValue || ""}
-                            onChange={(e) => setConfigDiscountValue(e.target.value === "" ? 0 : Number(e.target.value))}
-                          />
+                    {/* Manual Custom Discount Option */}
+                    <div className="pt-1">
+                      <details className="text-xs text-slate-500 bg-white border border-slate-200 rounded-xl p-2">
+                        <summary className="font-bold text-[10px] cursor-pointer text-slate-600 focus:outline-none">
+                          + Terapkan Diskon Kustom (Manual)
+                        </summary>
+                        <div className="pt-2 space-y-2">
+                          <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfigDiscountType("none");
+                                setConfigDiscountValue(0);
+                                setConfigDiscountId(undefined);
+                              }}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                configDiscountType === "none"
+                                  ? "bg-white text-slate-800 shadow-xs"
+                                  : "text-slate-550 hover:text-slate-750"
+                              }`}
+                            >
+                              Tanpa Diskon
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfigDiscountType("percentage");
+                                setConfigDiscountValue(0);
+                                setConfigDiscountId(undefined);
+                              }}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                configDiscountType === "percentage"
+                                  ? "bg-white text-slate-800 shadow-xs"
+                                  : "text-slate-550 hover:text-slate-750"
+                              }`}
+                            >
+                              Persen (%)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfigDiscountType("nominal");
+                                setConfigDiscountValue(0);
+                                setConfigDiscountId(undefined);
+                              }}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                configDiscountType === "nominal"
+                                  ? "bg-white text-slate-800 shadow-xs"
+                                  : "text-slate-550 hover:text-slate-750"
+                              }`}
+                            >
+                              Nominal (Rp)
+                            </button>
+                          </div>
+
+                          {configDiscountType !== "none" && (
+                            <div className="relative font-sans pt-1">
+                              <span className="absolute left-2.5 top-2.5 text-xs font-bold text-slate-500">
+                                {configDiscountType === "percentage" ? "%" : "Rp"}
+                              </span>
+                              <input
+                                type="number"
+                                required
+                                placeholder={configDiscountType === "percentage" ? "Contoh: 15" : "Contoh: 10000"}
+                                className="w-full pl-8 pr-3 py-1.5 border border-slate-200 bg-slate-50 rounded-lg text-xs"
+                                value={configDiscountValue || ""}
+                                onChange={(e) => setConfigDiscountValue(e.target.value === "" ? 0 : Number(e.target.value))}
+                              />
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      </details>
+                    </div>
                   </div>
 
                   {/* CALCULATIONS AND RESULT */}

@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
-import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift, Topping } from "./types";
+import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift, Topping, Discount } from "./types";
 import {
   getProducts,
   saveProducts,
@@ -28,7 +28,9 @@ import {
   resetToFactorySettings,
   resetTransactionsOnly,
   getToppings,
-  saveToppings
+  saveToppings,
+  getDiscounts,
+  saveDiscounts
 } from "./dataStore";
 import { syncAllDataToGoogleSheets } from "./utils/googleSheetsService";
 import { getAccessToken } from "./utils/googleAuth";
@@ -45,6 +47,7 @@ interface AppContextType {
   shifts: CashierShift[];
   activeShift: CashierShift | null;
   toppings: Topping[];
+  discounts: Discount[];
   openShift: (cashierName: string, startBalance: number) => void;
   closeShift: (actualDeposit: number, notes?: string) => void;
   addProduct: (product: Omit<Product, "id">) => void;
@@ -65,6 +68,9 @@ interface AppContextType {
   addTopping: (topping: Omit<Topping, "id">) => void;
   updateTopping: (topping: Topping) => void;
   deleteTopping: (id: string) => void;
+  addDiscount: (discount: Omit<Discount, "id">) => void;
+  updateDiscount: (discount: Discount) => void;
+  deleteDiscount: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -86,6 +92,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [stockLogs, setStockLogs] = useState<StockLog[]>([]);
   const [shifts, setShifts] = useState<CashierShift[]>([]);
   const [toppings, setToppings] = useState<Topping[]>([]);
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
 
   // Load initial data
   useEffect(() => {
@@ -99,6 +106,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStockLogs(getStockLogs());
     setShifts(getShifts());
     setToppings(getToppings());
+    setDiscounts(getDiscounts());
   }, []);
 
   // Compute active shift with real-time aggregated shift figures
@@ -431,6 +439,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStockLogs([]);
     setShifts([]);
     setToppings(getToppings());
+    setDiscounts(getDiscounts());
   };
 
   const resetOnlyTransactions = () => {
@@ -629,6 +638,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveToppings(updated);
   };
 
+  const addDiscount = (newDiscount: Omit<Discount, "id">) => {
+    const fresh: Discount = {
+      ...newDiscount,
+      id: "disc_" + Date.now().toString()
+    };
+    const updated = [...discounts, fresh];
+    setDiscounts(updated);
+    saveDiscounts(updated);
+  };
+
+  const updateDiscount = (updatedDiscount: Discount) => {
+    const updated = discounts.map(d => (d.id === updatedDiscount.id ? updatedDiscount : d));
+    setDiscounts(updated);
+    saveDiscounts(updated);
+  };
+
+  const deleteDiscount = (id: string) => {
+    const updated = discounts.filter(d => d.id !== id);
+    setDiscounts(updated);
+    saveDiscounts(updated);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -643,6 +674,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         shifts,
         activeShift,
         toppings,
+        discounts,
         openShift,
         closeShift,
         addProduct,
@@ -662,7 +694,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetOnlyTransactions: resetOnlyTransactions,
         addTopping,
         updateTopping,
-        deleteTopping
+        deleteTopping,
+        addDiscount,
+        updateDiscount,
+        deleteDiscount
       }}
     >
       {children}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift, Topping } from "./types";
+import { Product, Transaction, CashierExpense, OperationalExpense, Investor, StoreSettings, Category, StockLog, CashierShift, Topping, Discount } from "./types";
 
 // Helper keys
 const PRODUCTS_KEY = "kasir_umkm_products";
@@ -16,6 +16,7 @@ const CATEGORIES_KEY = "kasir_umkm_categories";
 const STOCK_LOGS_KEY = "kasir_umkm_stock_logs";
 const SHIFTS_KEY = "kasir_umkm_shifts";
 const TOPPINGS_KEY = "kasir_umkm_toppings";
+const DISCOUNTS_KEY = "kasir_umkm_discounts";
 
 export const MOCK_TOPPINGS: Topping[] = [
   { id: "top1", name: "Cokelat Parut", price: 3000 },
@@ -23,6 +24,13 @@ export const MOCK_TOPPINGS: Topping[] = [
   { id: "top3", name: "Boba / Tapioca Pearl", price: 5000 },
   { id: "top4", name: "Whipped Cream", price: 4000 },
   { id: "top5", name: "Susu Kental Manis Extra", price: 2000 }
+];
+
+export const MOCK_DISCOUNTS: Discount[] = [
+  { id: "disc1", name: "Diskon Jumat Berkah (10%)", type: "percentage", value: 10 },
+  { id: "disc2", name: "Diskon Karyawan (15%)", type: "percentage", value: 15 },
+  { id: "disc3", name: "Potongan Langsung (Rp 5.000)", type: "nominal", value: 5000 },
+  { id: "disc4", name: "Potongan Pembeli Setia (Rp 10.000)", type: "nominal", value: 10000 }
 ];
 
 // Default Store Settings
@@ -370,6 +378,19 @@ export const saveToppings = (toppings: Topping[]): void => {
   localStorage.setItem(TOPPINGS_KEY, JSON.stringify(toppings));
 };
 
+export const getDiscounts = (): Discount[] => {
+  const data = localStorage.getItem(DISCOUNTS_KEY);
+  if (!data) {
+    localStorage.setItem(DISCOUNTS_KEY, JSON.stringify(MOCK_DISCOUNTS));
+    return MOCK_DISCOUNTS;
+  }
+  return JSON.parse(data);
+};
+
+export const saveDiscounts = (discounts: Discount[]): void => {
+  localStorage.setItem(DISCOUNTS_KEY, JSON.stringify(discounts));
+};
+
 export const resetToFactorySettings = (): void => {
   localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
   localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify([]));
@@ -381,6 +402,7 @@ export const resetToFactorySettings = (): void => {
   localStorage.setItem(STOCK_LOGS_KEY, JSON.stringify([]));
   localStorage.setItem(SHIFTS_KEY, JSON.stringify([]));
   localStorage.setItem(TOPPINGS_KEY, JSON.stringify(MOCK_TOPPINGS));
+  localStorage.setItem(DISCOUNTS_KEY, JSON.stringify(MOCK_DISCOUNTS));
   localStorage.setItem("kasir_umkm_monthly_closings", JSON.stringify([]));
   localStorage.setItem("kasir_umkm_archived_transactions", JSON.stringify([]));
   localStorage.setItem("kasir_umkm_archived_cashier_expenses", JSON.stringify([]));
@@ -410,6 +432,7 @@ export const resetToMockData = (): void => {
   localStorage.removeItem(STOCK_LOGS_KEY);
   localStorage.removeItem(SHIFTS_KEY);
   localStorage.removeItem(TOPPINGS_KEY);
+  localStorage.removeItem(DISCOUNTS_KEY);
   localStorage.removeItem("kasir_umkm_monthly_closings");
   localStorage.removeItem("kasir_umkm_archived_transactions");
   localStorage.removeItem("kasir_umkm_archived_cashier_expenses");
