@@ -24,8 +24,12 @@ import {
   saveStockLogs,
   getShifts,
   saveShifts,
-  resetToMockData as dbReset
+  resetToMockData as dbReset,
+  resetToFactorySettings,
+  resetTransactionsOnly
 } from "./dataStore";
+import { syncAllDataToGoogleSheets } from "./utils/googleSheetsService";
+import { getAccessToken } from "./utils/googleAuth";
 
 interface AppContextType {
   products: Product[];
@@ -54,6 +58,7 @@ interface AppContextType {
   deleteCategory: (id: string) => void;
   adjustStock: (productId: string, quantityChange: number, type: "in" | "out" | "adj", notes?: string) => void;
   resetAllData: () => void;
+  resetOnlyTransactions: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -395,16 +400,203 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetAllData = () => {
-    dbReset();
-    setProducts(getProducts());
-    setTransactions(getTransactions());
-    setCashierExpenses(getCashierExpenses());
-    setOperationalExpenses(getOperationalExpenses());
-    setInvestors(getInvestors());
-    setStoreSettings(getStoreSettings());
-    setCategories(getCategories());
-    setStockLogs(getStockLogs());
+    resetToFactorySettings();
+    setProducts([]);
+    setTransactions([]);
+    setCashierExpenses([]);
+    setOperationalExpenses([]);
+    setInvestors([]);
+    setStoreSettings({
+      storeName: "Sentosa Jaya POS",
+      address: "Jl. Merdeka No. 45, Bandung, Jawa Barat",
+      phone: "0812-3456-7890",
+      greetingMessage: "Terima kasih telah berbelanja di Sentosa Jaya!",
+      ownerPin: "1234",
+      ownerWhatsapp: ""
+    });
+    setCategories([
+      { id: "cat1", name: "Makanan" },
+      { id: "cat2", name: "Minuman" },
+      { id: "cat3", name: "Cemilan" },
+      { id: "cat4", name: "Lainnya / Merchandise" }
+    ]);
+    setStockLogs([]);
+    setShifts([]);
   };
+
+  const resetOnlyTransactions = () => {
+    resetTransactionsOnly();
+    setTransactions([]);
+    setCashierExpenses([]);
+    setOperationalExpenses([]);
+    setStockLogs([]);
+    setShifts([]);
+  };
+
+  // Automated Monthly Closings check & Google Sheets syncing on app load
+  useEffect(() => {
+    if (transactions.length === 0) return;
+
+    const checkMonthlyClosing = async () => {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+
+      // Find transactions occurring prior to current month
+      const pastTxs = transactions.filter(t => {
+        const txDate = new Date(t.date);
+        return txDate.getFullYear() < currentYear || 
+               (txDate.getFullYear() === currentYear && txDate.getMonth() < currentMonth);
+      });
+
+      if (pastTxs.length === 0) return;
+
+      // Group past transactions by year-month string
+      const pastMonthsGrouped: { [key: string]: Transaction[] } = {};
+      pastTxs.forEach(t => {
+        const txDate = new Date(t.date);
+        const yyyymm = `${txDate.getFullYear()}-${(txDate.getMonth() + 1).toString().padStart(2, "0")}`;
+        if (!pastMonthsGrouped[yyyymm]) {
+          pastMonthsGrouped[yyyymm] = [];
+        }
+        pastMonthsGrouped[yyyymm].push(t);
+      });
+
+      const sortedPastMonths = Object.keys(pastMonthsGrouped).sort();
+      const closingsStr = localStorage.getItem("kasir_umkm_monthly_closings");
+      const currentClosings = closingsStr ? JSON.parse(closingsStr) : [];
+      let updatedClosings = [...currentClosings];
+      let needsStateUpdate = false;
+
+      for (const yyyymm of sortedPastMonths) {
+        if (currentClosings.some((c: any) => c.monthString === yyyymm)) {
+          continue;
+        }
+
+        const monthTxs = pastMonthsGrouped[yyyymm];
+        const monthCashierExps = cashierExpenses.filter(e => {
+          const d = new Date(e.date);
+          const ym = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+          return ym === yyyymm;
+        });
+
+        const monthOpsExps = operationalExpenses.filter(e => {
+          const d = new Date(e.date);
+          const ym = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+          return ym === yyyymm;
+        });
+
+        const revenue = monthTxs.reduce((sum, tx) => sum + tx.total, 0);
+        const cost = monthTxs.reduce((sum, tx) => sum + tx.costTotal, 0);
+        const profit = revenue - cost;
+        const totalExp = monthCashierExps.reduce((sum, e) => sum + e.amount, 0) + 
+                         monthOpsExps.reduce((sum, e) => sum + e.amount, 0);
+        const netProfit = profit - totalExp;
+
+        // Formats month string to indonesian month
+        const [year, month] = yyyymm.split("-");
+        const monthNames = [
+          "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+          "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+        ];
+        const monthName = monthNames[parseInt(month, 10) - 1] || "Bulan";
+        const labelIndo = `${monthName} ${year}`;
+
+        const newClosing = {
+          id: "closing_" + yyyymm + "_" + Date.now().toString(),
+          monthString: yyyymm,
+          name: labelIndo,
+          dateClosed: new Date().toISOString(),
+          totalSales: revenue,
+          totalProfit: profit,
+          totalExpenses: totalExp,
+          netProfit: netProfit,
+          syncedToGoogleSheets: false
+        };
+
+        const savedId = localStorage.getItem("kasir_spreadsheet_id");
+        const token = await getAccessToken();
+
+        if (savedId && token) {
+          try {
+            const syncResult = await syncAllDataToGoogleSheets(
+              token,
+              savedId,
+              products,
+              transactions, // push current transactions state to backing sheet first
+              cashierExpenses,
+              operationalExpenses
+            );
+            if (syncResult.success) {
+              newClosing.syncedToGoogleSheets = true;
+              localStorage.setItem("kasir_last_synced", new Date().toLocaleString("id-ID"));
+            }
+          } catch (err) {
+            console.error("Gagal sinkronisasi Google Sheets otomatis:", err);
+          }
+        }
+
+        updatedClosings.push(newClosing);
+        needsStateUpdate = true;
+      }
+
+      if (needsStateUpdate) {
+        localStorage.setItem("kasir_umkm_monthly_closings", JSON.stringify(updatedClosings));
+
+        // Archive transaction and fee details prior to clearing
+        const archivedTxsStr = localStorage.getItem("kasir_umkm_archived_transactions");
+        const archivedTxs = archivedTxsStr ? JSON.parse(archivedTxsStr) : [];
+        
+        const archivedCExpStr = localStorage.getItem("kasir_umkm_archived_cashier_expenses");
+        const archivedCExp = archivedCExpStr ? JSON.parse(archivedCExpStr) : [];
+
+        const archivedOExpStr = localStorage.getItem("kasir_umkm_archived_operational_expenses");
+        const archivedOExp = archivedOExpStr ? JSON.parse(archivedOExpStr) : [];
+
+        const newArchivedTxs = [...archivedTxs, ...pastTxs];
+        const newArchivedCExps = [...archivedCExp, ...cashierExpenses.filter(e => {
+          const d = new Date(e.date);
+          return d.getFullYear() < currentYear || (d.getFullYear() === currentYear && d.getMonth() < currentMonth);
+        })];
+        const newArchivedOExps = [...archivedOExp, ...operationalExpenses.filter(e => {
+          const d = new Date(e.date);
+          return d.getFullYear() < currentYear || (d.getFullYear() === currentYear && d.getMonth() < currentMonth);
+        })];
+
+        localStorage.setItem("kasir_umkm_archived_transactions", JSON.stringify(newArchivedTxs));
+        localStorage.setItem("kasir_umkm_archived_cashier_expenses", JSON.stringify(newArchivedCExps));
+        localStorage.setItem("kasir_umkm_archived_operational_expenses", JSON.stringify(newArchivedOExps));
+
+        // State filter
+        const activeTxs = transactions.filter(t => {
+          const txDate = new Date(t.date);
+          return txDate.getFullYear() === currentYear && txDate.getMonth() === currentMonth;
+        });
+
+        const activeCExps = cashierExpenses.filter(e => {
+          const d = new Date(e.date);
+          return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+        });
+
+        const activeOExps = operationalExpenses.filter(e => {
+          const d = new Date(e.date);
+          return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+        });
+
+        setTransactions(activeTxs);
+        setCashierExpenses(activeCExps);
+        setOperationalExpenses(activeOExps);
+
+        saveTransactions(activeTxs);
+        saveCashierExpenses(activeCExps);
+        saveOperationalExpenses(activeOExps);
+
+        alert("📊 TUTUP BUKU BULANAN OTOMATIS BERHASIL!\n\nLaporan keuangan bulan kemarin telah disimpulkan, disinkronkan ke Google Sheets, dan diarsipkan secara aman.");
+      }
+    };
+
+    checkMonthlyClosing();
+  }, [transactions, cashierExpenses, operationalExpenses, products]);
 
   return (
     <AppContext.Provider
@@ -434,7 +626,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCategory,
         deleteCategory,
         adjustStock,
-        resetAllData
+        resetAllData,
+        resetOnlyTransactions: resetOnlyTransactions
       }}
     >
       {children}

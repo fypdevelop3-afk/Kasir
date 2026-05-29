@@ -10,13 +10,19 @@ import { formatRupiah, formatIndoDate } from "../utils/format";
 import { 
   Calendar, FileSpreadsheet, Printer, Activity, BarChart3, 
   ChevronRight, BadgeInfo, TrendingUp, DollarSign, Archive, Eye,
-  MessageSquare
+  MessageSquare, CheckCircle, AlertCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleSyncWidget } from "./GoogleSyncWidget";
 
 export const DailyReports: React.FC = () => {
   const { transactions, cashierExpenses, operationalExpenses, shifts, storeSettings } = useApp();
+
+  // Load monthly closed books list
+  const monthlyClosings = useMemo(() => {
+    const data = localStorage.getItem("kasir_umkm_monthly_closings");
+    return data ? JSON.parse(data) : [];
+  }, [transactions]);
 
   // Selected relative date filter
   // "today", "yesterday", "all"
@@ -418,6 +424,68 @@ export const DailyReports: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* 📊 LAPORAN TUTUP BUKU BULANAN OTOMATIS */}
+      <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-xs space-y-4 animate-fade-in">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div>
+            <h4 className="font-extrabold text-slate-1000 text-sm flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-emerald-600 animate-pulse" />
+              Arsip Tutup Buku Bulanan Otomatis
+            </h4>
+            <p className="text-[11px] text-slate-400 font-medium">Rekap keuangan diringkas secara otomatis di akhir bulan, memindahkan detail ke arsip lokal & Google Sheets demi menjaga performa POS tetap responsif.</p>
+          </div>
+          <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-150 px-2.5 py-1 rounded-full font-bold">
+            Total Tutup Buku: {monthlyClosings.length} Bulan
+          </span>
+        </div>
+
+        {monthlyClosings.length === 0 ? (
+          <div className="bg-slate-50 rounded-2xl p-6 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-1.5 border border-dashed border-slate-200">
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full uppercase">Pristine State</span>
+            <p className="max-w-md">Belum ada penutupan buku bulanan terdokumentasi. Buku kasir akan meringkas rekap bulanan otomatis saat kalender berganti ke bulan baru.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-150 text-slate-600 font-bold">
+                  <th className="p-3">Periode Bulan</th>
+                  <th className="p-3">Tanggal Tutup Buku</th>
+                  <th className="p-3">Pendapatan Omset</th>
+                  <th className="p-3">Biaya-Biaya</th>
+                  <th className="p-3">Laba Bersih</th>
+                  <th className="p-3 text-center">Status Pencadangan Google Sheets</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {monthlyClosings.map((mc: any) => (
+                  <tr key={mc.id} className="hover:bg-slate-50/50">
+                    <td className="p-3 font-extrabold text-slate-850 font-sans">{mc.name}</td>
+                    <td className="p-3 text-slate-500 font-mono">
+                      {new Date(mc.dateClosed).toLocaleString("id-ID", { dateStyle: "medium" })}
+                    </td>
+                    <td className="p-3 font-mono font-bold text-emerald-700">{formatRupiah(mc.totalSales)}</td>
+                    <td className="p-3 font-mono text-rose-500">-{formatRupiah(mc.totalExpenses)}</td>
+                    <td className="p-3 font-mono font-extrabold text-slate-900">{formatRupiah(mc.netProfit)}</td>
+                    <td className="p-3 text-center">
+                      {mc.syncedToGoogleSheets ? (
+                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-150 px-2.5 py-0.5 rounded-full font-bold text-[9px] uppercase">
+                          <CheckCircle className="h-3 w-3" /> Berhasil Diunggah
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-150 px-2.5 py-0.5 rounded-full font-bold text-[9px] uppercase" title="Sistem POS mencadangkan rekap lokal ini. Hubungkan akun Google Sheets agar tersentralisasi ke Drive.">
+                          <AlertCircle className="h-3 w-3 animate-pulse" /> Tersimpan Offline (Local Archive)
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* RIWAYAT SHIFT KASIR & REKONSILIASI KAS */}
       <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-xs space-y-4 animate-fade-in">

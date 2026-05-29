@@ -27,6 +27,7 @@ export const AdminPanel: React.FC = () => {
     storeSettings,
     updateStoreSettings,
     resetAllData,
+    resetOnlyTransactions,
     categories,
     stockLogs,
     addCategory,
@@ -1021,30 +1022,51 @@ export const AdminPanel: React.FC = () => {
                 />
               </div>
 
-              <div className="pt-2 flex justify-between items-center gap-4">
-                <button
-                  id="btn-reset-store-data"
-                  type="button"
-                  onClick={() => {
-                    setConfirmModal({
-                      isOpen: true,
-                      title: "⚠️ Atur Ulang Semua Data (Peringatan Kritis)",
-                      message: "Tindakan Kritis: Anda akan menghapus total riwayat transaksi, biaya kasir, biaya operasional, dan mereset sistem ke setelan semula. Data yang terhapus tidak dapat dikembalikan. Lanjutkan?",
-                      onConfirm: () => {
-                        resetAllData();
-                        alert("Pembersihan selesai! Semua data POS telah direset ke setelan asal pabrikan!");
-                      }
-                    });
-                  }}
-                  className="py-2.5 px-4 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
-                >
-                  Reset Semua Data POS
-                </button>
+              <div className="pt-2 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 border-t border-slate-100 pt-5">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    id="btn-reset-transactions-only"
+                    type="button"
+                    onClick={() => {
+                      setConfirmModal({
+                        isOpen: true,
+                        title: "🧹 Bersihkan Riwayat Transaksi Saja",
+                        message: "Tindakan: Anda akan menghapus seluruh catatan riwayat penjualan, shift kasir, pengeluran kasir/operasional, serta rekam log stok. Seluruh daftar produk dan info modal Anda TETAP AMAN. Lanjutkan?",
+                        onConfirm: () => {
+                          resetOnlyTransactions();
+                          alert("Pembersihan selesai! Semua riwayat transaksi telah dihapus bersih!");
+                        }
+                      });
+                    }}
+                    className="py-2.5 px-4 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors cursor-pointer text-center"
+                  >
+                    Bersihkan Transaksi Saja
+                  </button>
+
+                  <button
+                    id="btn-reset-store-data"
+                    type="button"
+                    onClick={() => {
+                      setConfirmModal({
+                        isOpen: true,
+                        title: "⚠️ Atur Ulang Setelan Pabrik (Sangat Kritis)",
+                        message: "Tindakan Kritis: Anda akan menghapus total riwayat transaksi, biaya kasir, biaya operasional, investor, DAN daftar produk barang dagangan Anda secara permanen. POS akan kembali kosong sempurna seperti baru diinstal. Lanjutkan?",
+                        onConfirm: () => {
+                          resetAllData();
+                          alert("Pembersihan total selesai! Semua data POS termasuk produk telah direset kembali ke setelan asal pabrikan!");
+                        }
+                      });
+                    }}
+                    className="py-2.5 px-4 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer text-center"
+                  >
+                    Reset Total Pabrikan
+                  </button>
+                </div>
 
                 <button
                   id="btn-save-settings"
                   type="submit"
-                  className="py-2.5 px-5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 flex items-center gap-2 cursor-pointer shadow-xs"
+                  className="py-2.5 px-5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 flex items-center justify-center gap-2 cursor-pointer shadow-xs whitespace-nowrap"
                 >
                   <Save className="h-4 w-4" />
                   Simpan Pengaturan

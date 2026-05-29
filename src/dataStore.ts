@@ -348,6 +348,34 @@ export const saveShifts = (shifts: CashierShift[]): void => {
   localStorage.setItem(SHIFTS_KEY, JSON.stringify(shifts));
 };
 
+export const resetToFactorySettings = (): void => {
+  localStorage.setItem(PRODUCTS_KEY, JSON.stringify([]));
+  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify([]));
+  localStorage.setItem(CASHIER_EXP_KEY, JSON.stringify([]));
+  localStorage.setItem(OPERATIONAL_EXP_KEY, JSON.stringify([]));
+  localStorage.setItem(INVESTORS_KEY, JSON.stringify([]));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(DEFAULT_CATEGORIES));
+  localStorage.setItem(STOCK_LOGS_KEY, JSON.stringify([]));
+  localStorage.setItem(SHIFTS_KEY, JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_monthly_closings", JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_archived_transactions", JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_archived_cashier_expenses", JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_archived_operational_expenses", JSON.stringify([]));
+};
+
+export const resetTransactionsOnly = (): void => {
+  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify([]));
+  localStorage.setItem(CASHIER_EXP_KEY, JSON.stringify([]));
+  localStorage.setItem(OPERATIONAL_EXP_KEY, JSON.stringify([]));
+  localStorage.setItem(STOCK_LOGS_KEY, JSON.stringify([]));
+  localStorage.setItem(SHIFTS_KEY, JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_monthly_closings", JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_archived_transactions", JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_archived_cashier_expenses", JSON.stringify([]));
+  localStorage.setItem("kasir_umkm_archived_operational_expenses", JSON.stringify([]));
+};
+
 export const resetToMockData = (): void => {
   localStorage.removeItem(PRODUCTS_KEY);
   localStorage.removeItem(TRANSACTIONS_KEY);
@@ -358,5 +386,9 @@ export const resetToMockData = (): void => {
   localStorage.removeItem(CATEGORIES_KEY);
   localStorage.removeItem(STOCK_LOGS_KEY);
   localStorage.removeItem(SHIFTS_KEY);
+  localStorage.removeItem("kasir_umkm_monthly_closings");
+  localStorage.removeItem("kasir_umkm_archived_transactions");
+  localStorage.removeItem("kasir_umkm_archived_cashier_expenses");
+  localStorage.removeItem("kasir_umkm_archived_operational_expenses");
   // reloading will repopulate via getters
 };
