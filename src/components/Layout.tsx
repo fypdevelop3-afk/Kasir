@@ -235,36 +235,137 @@ export const Layout: React.FC = () => {
           </div>
 
           {/* Quick lock status button for owner machine */}
-          <div className="flex items-center justify-end px-4 py-1 sm:py-0">
+          <div className="flex items-center justify-end px-4 py-1 sm:py-0 gap-2">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider hidden md:inline">Peran Aktif:</span>
+            <div className="relative">
+              <select
+                id="role-permission-select"
+                value={isOwnerMode ? "owner" : "cashier"}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "owner") {
+                    setPendingTab(null);
+                    setShowPinModal(true);
+                    setPinInput("");
+                    setErrorMsg("");
+                  } else {
+                    handleLockSession();
+                  }
+                }}
+                className={`text-[11px] font-black rounded-xl px-3 py-1.5 border transition-all outline-none cursor-pointer focus:ring-1 focus:ring-emerald-500 hover:border-slate-300 ${
+                  isOwnerMode 
+                    ? "bg-emerald-950/20 text-emerald-400 border-emerald-500/35 font-extrabold"
+                    : "bg-slate-800 text-slate-350 border-slate-700/80"
+                }`}
+              >
+                <option value="cashier" className="bg-slate-900 text-slate-300 font-semibold">👤 Staff Kasir (Terbatas)</option>
+                <option value="owner" className="bg-slate-900 text-emerald-400 font-extrabold">👑 Pemilik / Owner (Full)</option>
+              </select>
+            </div>
+
             {isOwnerMode ? (
               <button
+                id="btn-lock-session"
                 onClick={handleLockSession}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white border border-rose-600 rounded-xl text-[10px] font-bold transition-all cursor-pointer shadow-xs"
+                className="flex items-center gap-1 py-1.5 px-2.5 bg-rose-600/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-[10px] font-medium transition-all cursor-pointer"
                 title="Selesaikan sesi pemilik dan kunci kembali untuk Kasir"
               >
-                <Unlock className="h-3.5 w-3.5" />
-                Mode Pemilik &bull; Kunci Kembali
+                <Unlock className="h-3 w-3" />
+                Kunci Kasir
               </button>
             ) : (
               <button
+                id="btn-unlock-session"
                 onClick={() => { setPendingTab(null); setShowPinModal(true); setPinInput(""); setErrorMsg(""); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-slate-350 hover:bg-slate-750 hover:text-white border border-slate-700/80 rounded-xl text-[10px] font-bold transition-all cursor-pointer"
+                className="flex items-center gap-1 py-1.5 px-2.5 bg-slate-800 hover:bg-slate-750 text-slate-350 hover:text-white border border-slate-700/80 rounded-xl text-[10px] font-medium transition-all cursor-pointer"
                 title="Buka akses Laporan dan Admin dengan PIN Pemilik"
               >
-                <Lock className="h-3.5 w-3.5 text-slate-400" />
-                Mode Kasir &bull; Bukalock Pemilik
+                <Lock className="h-3 w-3 text-slate-400" />
+                Eskalasi PIN
               </button>
             )}
           </div>
         </div>
       </nav>
 
-      {/* CORE WORKSPACE CONTENT AREA */}
+      {/* CORE WORKSPACE CONTENT AREA WITH PERMISSION GUARDING */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
         {activeTab === "pos" && <CashierPOS />}
-        {activeTab === "reports" && <DailyReports />}
-        {activeTab === "admin" && <AdminPanel />}
-        {activeTab === "investor" && <InvestorPanel />}
+        
+        {activeTab === "reports" && (
+          isOwnerMode ? (
+            <DailyReports />
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-100 p-12 text-center shadow-xs max-w-lg mx-auto my-12 space-y-6 animate-fade-in" id="report-guard-view">
+              <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center">
+                <ShieldAlert className="h-8 w-8 text-amber-500 animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-extrabold text-slate-900 text-base">Akses Laporan Terbatas</h3>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  Laporan keuangan harian bersifat rahasia dan membutuhkan otorisasi untuk dibuka. Silakan masukkan PIN Pemilik untuk membuka akses.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPendingTab("reports"); setShowPinModal(true); setPinInput(""); setErrorMsg(""); }}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                Masuk dengan PIN Pemilik
+              </button>
+            </div>
+          )
+        )}
+        
+        {activeTab === "admin" && (
+          isOwnerMode ? (
+            <AdminPanel />
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-100 p-12 text-center shadow-xs max-w-lg mx-auto my-12 space-y-6 animate-fade-in" id="admin-guard-view">
+              <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center">
+                <ShieldAlert className="h-8 w-8 text-rose-500 animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-extrabold text-slate-900 text-base">Modul Administrasi & Stok Terkunci</h3>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  Peran aktif saat ini adalah <b>Staff Kasir</b>. Anda dilarang mengakses AdminPanel karena membutuhkan hak akses <b>Pemilik / Owner</b>. Gunakan PIN untuk eskalasi hak akses.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPendingTab("admin"); setShowPinModal(true); setPinInput(""); setErrorMsg(""); }}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                Verifikasi Hak Akses Pemilik
+              </button>
+            </div>
+          )
+        )}
+        
+        {activeTab === "investor" && (
+          isOwnerMode ? (
+            <InvestorPanel />
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-100 p-12 text-center shadow-xs max-w-lg mx-auto my-12 space-y-6 animate-fade-in" id="investor-guard-view">
+              <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center">
+                <ShieldAlert className="h-8 w-8 text-amber-500 animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-extrabold text-slate-900 text-base">Akses Portal Investor Dilindungi</h3>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  Data kemitraan & Portal Investor dilindungi PIN Pemilik untuk pengamanan informasi modal finansial bersama.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPendingTab("investor"); setShowPinModal(true); setPinInput(""); setErrorMsg(""); }}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 px-6 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                Masukkan PIN Pemilik
+              </button>
+            </div>
+          )
+        )}
       </main>
 
       {/* PIN ENTRY MODAL (INTERACTIVE NUMPAD OVERLAY) */}

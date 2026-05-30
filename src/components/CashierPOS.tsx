@@ -1195,10 +1195,58 @@ Terima Kasih!
                   };
                   
                   setJustClosedShift(shiftSummary);
-                  setCustomReportPhone(storeSettings?.ownerWhatsapp || "");
+                  
+                  const ownerWhatsappNum = storeSettings?.ownerWhatsapp || "";
+                  setCustomReportPhone(ownerWhatsappNum);
                   
                   closeShift(finalDeposit, closeShiftNotes);
                   setShowCloseShiftModal(false);
+
+                  // Directly trigger WhatsApp dispatch instantly
+                  let diffTxt = "Sesuai";
+                  const diffNum = shiftSummary.difference;
+                  if (diffNum > 0) {
+                    diffTxt = `Surplus (+${formatRupiah(diffNum)})`;
+                  } else if (diffNum < 0) {
+                    diffTxt = `Defisit (-${formatRupiah(Math.abs(diffNum))})`;
+                  }
+
+                  const startStr = new Date(shiftSummary.startTime).toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                  const endStr = new Date(shiftSummary.endTime).toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                  const dateStr = formatIndoDate(shiftSummary.startTime);
+
+                  const waText = `📢 *LAPORAN TUTUP SHIFT KASIR*
+🏪 *Toko:* ${storeSettings?.storeName || "POS Usaha"}
+👤 *Kasir:* ${shiftSummary.cashierName}
+📅 *Tanggal:* ${dateStr}
+⏰ *Waktu:* ${startStr} - ${endStr}
+
+--------------------------------------
+💵 *Modal Awal Laci:* ${formatRupiah(shiftSummary.startBalance)}
+📈 *Penjualan Tunai:* ${formatRupiah(shiftSummary.cashSales)}
+📱 *Penjualan Non-Tunai / QRIS:* ${formatRupiah(shiftSummary.nonCashSales)}
+📉 *Pengeluaran Kasir:* -${formatRupiah(shiftSummary.cashExpenses)}
+--------------------------------------
+🏁 *Estimasi Kas di Laci:* ${formatRupiah(shiftSummary.expectedCash)}
+💰 *Total Uang Fisik Laci:* ${formatRupiah(shiftSummary.actualDeposit)}
+💸 *Setoran Bersih (Disetor):* ${formatRupiah(shiftSummary.actualDeposit - shiftSummary.startBalance)}
+ℹ️ *Sisa Modal Tetap di Laci:* ${formatRupiah(shiftSummary.startBalance)}
+⚠️ *Selisih Rekonsiliasi:* ${diffTxt}
+
+📝 *Catatan Shift:* ${shiftSummary.notes || "-"}
+
+_Laporan otomatis via ${storeSettings?.storeName || "POS"} POS._`;
+
+                  const destNum = ownerWhatsappNum.trim().replace(/\D/g, "");
+                  const waUrl = destNum 
+                    ? `https://api.whatsapp.com/send?phone=${destNum}&text=${encodeURIComponent(waText)}`
+                    : `https://api.whatsapp.com/send?text=${encodeURIComponent(waText)}`;
+
+                  try {
+                    window.open(waUrl, "_blank");
+                  } catch (err) {
+                    console.error("Gagal melakukan otomatisasi pembukaan WA:", err);
+                  }
                 }} 
                 className="p-5 space-y-4"
               >

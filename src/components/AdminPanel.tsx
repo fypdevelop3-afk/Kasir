@@ -131,6 +131,47 @@ export const AdminPanel: React.FC = () => {
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
 
+  // Real-time Cloud Sync handlers
+  const handleConnectStore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!syncInput.trim()) return;
+    setIsConnecting(true);
+    setSyncErrorMessage(null);
+    setSyncSuccessMessage(null);
+    try {
+      const ok = await connectStore(syncInput);
+      if (ok) {
+        setSyncSuccessMessage(`Berhasil terhubung ke Kode Toko: ${syncInput.toUpperCase()}`);
+        setSyncInput("");
+      } else {
+        setSyncErrorMessage("Kode Toko tidak ditemukan. Silakan periksa kembali kodenya.");
+      }
+    } catch (err: any) {
+      setSyncErrorMessage(err.message || "Gagal menghubungkan toko ke cloud.");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleCreateNewStore = async () => {
+    setIsGenerating(true);
+    setSyncErrorMessage(null);
+    setSyncSuccessMessage(null);
+    try {
+      const code = await generateNewStore();
+      setSyncSuccessMessage(`Berhasil mengaktifkan sinkronisasi real-time cloud! Kode Toko Anda adalah: ${code}`);
+    } catch (err: any) {
+      setSyncErrorMessage(err.message || "Gagal membuat toko baru di cloud.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    disconnectStore();
+    setSyncSuccessMessage("Berhasil memutuskan koneksi cloud. Data Anda kini berjalan dalam mode offline lokal.");
+  };
+
   // 100% Offline backup handlers (Lighter and easier alternative)
   const handleExportBackup = () => {
     try {
@@ -1568,8 +1609,180 @@ export const AdminPanel: React.FC = () => {
         {/* TAB 6: STORE SETTINGS */}
         {adminTab === "settings" && (
           <div className="space-y-6">
+            {/* WIDGET 1: REAL-TIME MULTI-HP CLOUD SYNC */}
+            <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl p-6 shadow-xl space-y-6 relative overflow-hidden animate-fade-in" id="widget-cloud-sinkronisasi">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl rounded-full"></div>
+              
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 009 11a14 14 0 00-1.5-6.3m12 11a14 14 0 01-1.5 6.3m-1.44-2.04l.054-.09a13.916 13.916 0 001.386-9.13A13.916 13.916 0 0013.95 2.1c-.224-.047-.452-.093-.68-.138M17 11V7a5 5 0 00-10 0v4m3 0a2 2 0 100 4 2 2 0 000-4z"></path>
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm tracking-tight text-white">Sinkronisasi Instan Multi-HP (Cloud Sync)</h3>
+                      <p className="text-[11px] text-slate-400">Hubungkan banyak HP karyawan langsung ke database Owner tanpa manual kirim-kirim sheets.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  {storeCode ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-400/35 animate-pulse uppercase tracking-wider">
+                      ● Sinkron Aktif
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-750 uppercase tracking-wider">
+                      ● Offline Lokal
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Status alerts */}
+              {syncErrorMessage && (
+                <div className="p-3.5 bg-red-950/30 border border-red-500/20 text-red-300 rounded-xl text-xs flex gap-2.5 items-start">
+                  <span className="h-4 w-4 shrink-0 mt-0.5">⚠️</span>
+                  <span>{syncErrorMessage}</span>
+                </div>
+              )}
+              {syncSuccessMessage && (
+                <div className="p-3.5 bg-emerald-950/20 border border-emerald-500/25 text-emerald-300 rounded-xl text-xs flex gap-2.5 items-start">
+                  <span className="h-4 w-4 shrink-0 mt-0.5">✨</span>
+                  <span>{syncSuccessMessage}</span>
+                </div>
+              )}
+
+              {storeCode ? (
+                // CONNECTED STATE
+                <div className="space-y-4">
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="space-y-1 text-center sm:text-left">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-widest block font-sans">KODE SYNC UNIK TOKO ANDA</span>
+                      <span className="text-xl font-mono font-black text-emerald-400 tracking-wider">
+                        {storeCode}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(storeCode);
+                          setCopiedCode(true);
+                          setTimeout(() => setCopiedCode(false), 2000);
+                        }}
+                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-750 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                      >
+                        {copiedCode ? (
+                          <span>Tersalin!</span>
+                        ) : (
+                          <span>Salin Kode</span>
+                        )}
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={handleDisconnect}
+                        className="px-3.5 py-2 bg-rose-950/30 hover:bg-rose-900 border border-rose-500/20 text-rose-300 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                      >
+                        Putuskan Sesi Cloud
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-950/20 rounded-2xl p-4 border border-slate-800 text-xs text-slate-400 space-y-2 leading-relaxed font-sans">
+                    <h4 className="font-bold text-slate-200">Cara Menghubungkan HP Karyawan (Lebih dari 1 HP):</h4>
+                    <ol className="list-decimal pl-4 space-y-1 text-[11px]">
+                      <li>Buka aplikasi ini di HP Karyawan.</li>
+                      <li>Masuk ke menu <span className="font-semibold text-slate-200">Admin Panel (Settings)</span> di HP tersebut.</li>
+                      <li>Masukkan kode <span className="font-bold text-emerald-400 font-mono">{storeCode}</span> pada formulir di bawah.</li>
+                      <li>Klik <span className="font-semibold text-slate-200">Hubungkan</span>, maka semua produk, harga, stok, transaksi, & shift akan tersinkron otomatis secara instan dlm hitungan detik!</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : (
+                // DISCONNECTED STATE
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start font-sans">
+                  {/* Option 1: CONNECT EXISTING */}
+                  <div className="bg-slate-950 rounded-2xl p-5 border border-slate-850 space-y-3">
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-sm text-slate-200">Hubungkan HP Karyawan</h4>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">Masukkan kode sync dari perangkat utama (Owner) untuk mensinkronkan HP ini.</p>
+                    </div>
+
+                    <form onSubmit={handleConnectStore} className="space-y-2.5">
+                      <input
+                        type="text"
+                        placeholder="Masukkan Kode Toko (KSR-xxxxx)"
+                        className="w-full bg-slate-900 border border-slate-750 text-white rounded-xl px-3 py-2 text-xs font-mono font-bold focus:ring-1 focus:ring-emerald-500 outline-none uppercase tracking-widest placeholder-slate-600"
+                        value={syncInput}
+                        onChange={(e) => setSyncInput(e.target.value)}
+                      />
+                      <button
+                        type="submit"
+                        disabled={isConnecting || !syncInput.trim()}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-800 disabled:text-slate-500 rounded-xl text-xs font-bold transition-all cursor-pointer font-sans"
+                      >
+                        {isConnecting ? "Menyambungkan..." : "Hubungkan HP Karyawan"}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Option 2: CREATE NEW CLOUD SOURCE */}
+                  <div className="bg-slate-950 rounded-2xl p-5 border border-slate-850 space-y-4 flex flex-col justify-between h-full">
+                    <div className="space-y-1.5">
+                      <h4 className="font-extrabold text-sm text-slate-200">Aktifkan Cloud Sync Baru (Owner / Toko Utama)</h4>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">
+                        Jika Anda adalah <b>Pemilik Toko</b>, buat basis cloud baru untuk membagikan data barang & stok ke seluruh HP karyawan Anda secara real-time.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isGenerating}
+                      onClick={handleCreateNewStore}
+                      className="w-full py-2 bg-slate-850 border border-slate-750 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer font-sans shrink-0"
+                    >
+                      {isGenerating ? "Mempersiapkan Cloud..." : "Buat Kode Cloud Baru"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* AUTOMATED GOOGLE SHEETS CLOUD SYNC & RECOVERY HUB */}
             <GoogleSyncWidget />
+
+            {/* WIDGET 3: OFFLINE BACKUP & RESTORE */}
+            <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-xs space-y-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Cadangan Manual Offline (.json)</h3>
+                <p className="text-xs text-slate-500">Ekspor atau pulihkan semua data Anda ke perangkat local secara gratis dlm format JSON demi keamanan.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleExportBackup}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  📥 Ekspor Cadangan (.json)
+                </button>
+
+                <label className="px-4 py-2 bg-slate-150 hover:bg-slate-200 text-slate-750 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border border-slate-250">
+                  <span>📤 Pulihkan Cadangan</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackup}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
 
             {/* CARD 2: PENGATURAN TOKO & POS */}
             <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-xs space-y-6">
