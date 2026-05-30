@@ -267,22 +267,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       discounts.forEach(d => {
         writePromises.push(setDoc(doc(db, "stores", newCode, "discounts", d.id), cleanObj(d)));
       });
-      transactions.forEach(t => {
+      transactions.slice(0, 20).forEach(t => {
         writePromises.push(setDoc(doc(db, "stores", newCode, "transactions", t.id), cleanObj(t)));
       });
-      shifts.forEach(s => {
+      shifts.slice(0, 5).forEach(s => {
         writePromises.push(setDoc(doc(db, "stores", newCode, "shifts", s.id), cleanObj(s)));
       });
-      cashierExpenses.forEach(e => {
+      cashierExpenses.slice(0, 15).forEach(e => {
         writePromises.push(setDoc(doc(db, "stores", newCode, "cashierExpenses", e.id), cleanObj(e)));
       });
-      operationalExpenses.forEach(e => {
+      operationalExpenses.slice(0, 15).forEach(e => {
         writePromises.push(setDoc(doc(db, "stores", newCode, "operationalExpenses", e.id), cleanObj(e)));
       });
       investors.forEach(i => {
         writePromises.push(setDoc(doc(db, "stores", newCode, "investors", i.id), cleanObj(i)));
       });
-      stockLogs.forEach(sl => {
+      stockLogs.slice(0, 20).forEach(sl => {
         writePromises.push(setDoc(doc(db, "stores", newCode, "stockLogs", sl.id), cleanObj(sl)));
       });
 

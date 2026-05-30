@@ -5,6 +5,7 @@ import firebaseConfig from "../firebase-applet-config.json";
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
+  experimentalForceLongPolling: true,
 });
 
 // Required Firestore Error Handling from fire-base integration skills
