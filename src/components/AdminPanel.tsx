@@ -123,6 +123,8 @@ export const AdminPanel: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
 
   // Load editing product safely
   const handleEditProductClick = (p: Product) => {
@@ -1541,20 +1543,31 @@ export const AdminPanel: React.FC = () => {
                           placeholder="Contoh: KSR-A8F19"
                           className="flex-1 bg-slate-950 border border-slate-850 focus:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono uppercase tracking-wider text-slate-100 placeholder:text-slate-700 outline-none"
                           value={syncInput}
-                          onChange={(e) => setSyncInput(e.target.value.toUpperCase())}
+                          onChange={(e) => {
+                            setSyncInput(e.target.value.toUpperCase());
+                            setSyncErrorMessage(null);
+                            setSyncSuccessMessage(null);
+                          }}
                         />
                         <button
                           type="button"
                           disabled={isConnecting || !syncInput.trim()}
                           onClick={async () => {
+                            setSyncErrorMessage(null);
+                            setSyncSuccessMessage(null);
                             setIsConnecting(true);
-                            const ok = await connectStore(syncInput.trim());
-                            setIsConnecting(false);
-                            if (ok) {
-                              alert("✅ Berhasil terhubung! Semua data Anda sudah disinkronisasikan secara real-time.");
-                              setSyncInput("");
-                            } else {
-                              alert("❌ Kode Sinkronisasi tidak valid atau tidak ditemukan. Periksa kembali karakter dan tanda hubungnya.");
+                            try {
+                              const ok = await connectStore(syncInput.trim());
+                              if (ok) {
+                                setSyncSuccessMessage("Berhasil terhubung! Semua data Anda sudah disinkronisasikan secara real-time.");
+                                setSyncInput("");
+                              } else {
+                                setSyncErrorMessage("Kode Sinkronisasi tidak valid atau tidak ditemukan. Periksa kembali karakter toko Anda.");
+                              }
+                            } catch (e: any) {
+                              setSyncErrorMessage("Gagal menghubungkan: " + (e.message || String(e)));
+                            } finally {
+                              setIsConnecting(false);
                             }
                           }}
                           className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-extrabold px-4 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
@@ -1580,13 +1593,15 @@ export const AdminPanel: React.FC = () => {
                         type="button"
                         disabled={isGenerating}
                         onClick={async () => {
+                          setSyncErrorMessage(null);
+                          setSyncSuccessMessage(null);
                           if (confirm("Metode ini akan mengunggah seluruh daftar produk, riwayat transaksi, dan laporan di HP ini ke Cloud sebagai data awal utama. Lanjutkan?")) {
                             setIsGenerating(true);
                             try {
                               const code = await generateNewStore();
-                              alert(`🚀 Cloud Sync Berhasil Diaktifkan!\n\nKode Toko Anda adalah: ${code}\n\nMasukkan kode ini di HP staff Anda yang lain untuk mulai sinkronisasi real-time.`);
-                            } catch (e) {
-                              alert("Gagal mengaktifkan sinkronisasi cloud. Silakan coba beberapa saat lagi.");
+                              setSyncSuccessMessage(`🚀 Cloud Sync Berhasil Diaktifkan!\n\nKode Toko Anda adalah: ${code}\n\nMasukkan kode ini di HP staff Anda yang lain untuk mulai sinkronisasi real-time.`);
+                            } catch (e: any) {
+                              setSyncErrorMessage("Gagal mengaktifkan sinkronisasi cloud: " + (e.message || String(e)));
                             } finally {
                               setIsGenerating(false);
                             }
@@ -1663,6 +1678,29 @@ export const AdminPanel: React.FC = () => {
                   </>
                 )}
               </div>
+
+              {/* Inline Feedback Messages */}
+              {(syncErrorMessage || syncSuccessMessage) && (
+                <div className="border-t border-slate-900 pt-4 relative z-10 animate-fade-in text-xs">
+                  {syncErrorMessage && (
+                    <div className="bg-rose-500/10 border border-rose-500/25 text-rose-400 p-3.5 rounded-xl flex items-center gap-2 font-medium">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{syncErrorMessage}</span>
+                    </div>
+                  )}
+                  {syncSuccessMessage && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 p-3.5 rounded-xl flex flex-col gap-1">
+                      <div className="flex items-center gap-2 font-bold text-emerald-300">
+                        <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                        <span>Operasi Berhasil!</span>
+                      </div>
+                      <p className="text-slate-300 text-[11px] font-medium leading-relaxed whitespace-pre-line mt-1">
+                        {syncSuccessMessage}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* CARD 2: PENGATURAN TOKO & POS */}

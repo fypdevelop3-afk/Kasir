@@ -234,41 +234,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return code;
   };
 
+  const cleanObj = (obj: any) => {
+    return JSON.parse(JSON.stringify(obj, (k, v) => (v === undefined ? null : v)));
+  };
+
   const generateNewStore = async (): Promise<string> => {
     const newCode = generateNewStoreCode();
     try {
       // Seed current local memory states into cloud
-      await setDoc(doc(db, "stores", newCode, "storeSettings", "main"), storeSettings);
+      await setDoc(doc(db, "stores", newCode, "storeSettings", "main"), cleanObj(storeSettings));
 
       for (const p of products) {
-        await setDoc(doc(db, "stores", newCode, "products", p.id), p);
+        await setDoc(doc(db, "stores", newCode, "products", p.id), cleanObj(p));
       }
       for (const cat of categories) {
-        await setDoc(doc(db, "stores", newCode, "categories", cat.id), cat);
+        await setDoc(doc(db, "stores", newCode, "categories", cat.id), cleanObj(cat));
       }
       for (const t of toppings) {
-        await setDoc(doc(db, "stores", newCode, "toppings", t.id), t);
+        await setDoc(doc(db, "stores", newCode, "toppings", t.id), cleanObj(t));
       }
       for (const d of discounts) {
-        await setDoc(doc(db, "stores", newCode, "discounts", d.id), d);
+        await setDoc(doc(db, "stores", newCode, "discounts", d.id), cleanObj(d));
       }
       for (const t of transactions) {
-        await setDoc(doc(db, "stores", newCode, "transactions", t.id), t);
+        await setDoc(doc(db, "stores", newCode, "transactions", t.id), cleanObj(t));
       }
       for (const s of shifts) {
-        await setDoc(doc(db, "stores", newCode, "shifts", s.id), s);
+        await setDoc(doc(db, "stores", newCode, "shifts", s.id), cleanObj(s));
       }
       for (const e of cashierExpenses) {
-        await setDoc(doc(db, "stores", newCode, "cashierExpenses", e.id), e);
+        await setDoc(doc(db, "stores", newCode, "cashierExpenses", e.id), cleanObj(e));
       }
       for (const e of operationalExpenses) {
-        await setDoc(doc(db, "stores", newCode, "operationalExpenses", e.id), e);
+        await setDoc(doc(db, "stores", newCode, "operationalExpenses", e.id), cleanObj(e));
       }
       for (const i of investors) {
-        await setDoc(doc(db, "stores", newCode, "investors", i.id), i);
+        await setDoc(doc(db, "stores", newCode, "investors", i.id), cleanObj(i));
       }
       for (const sl of stockLogs) {
-        await setDoc(doc(db, "stores", newCode, "stockLogs", sl.id), sl);
+        await setDoc(doc(db, "stores", newCode, "stockLogs", sl.id), cleanObj(sl));
       }
 
       localStorage.setItem("kasir_store_code", newCode);
