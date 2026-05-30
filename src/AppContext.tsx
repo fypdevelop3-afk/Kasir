@@ -250,39 +250,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const generateNewStore = async (): Promise<string> => {
     const newCode = generateNewStoreCode();
     try {
-      // Seed current local memory states into cloud
-      await withTimeout(setDoc(doc(db, "stores", newCode, "storeSettings", "main"), cleanObj(storeSettings)), 5000);
+      // Seed current local memory states into cloud in parallel for speed and reliability, preventing timeouts
+      const writePromises: Promise<any>[] = [];
 
-      for (const p of products) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "products", p.id), cleanObj(p)), 3000);
-      }
-      for (const cat of categories) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "categories", cat.id), cleanObj(cat)), 3000);
-      }
-      for (const t of toppings) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "toppings", t.id), cleanObj(t)), 3000);
-      }
-      for (const d of discounts) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "discounts", d.id), cleanObj(d)), 3000);
-      }
-      for (const t of transactions) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "transactions", t.id), cleanObj(t)), 3000);
-      }
-      for (const s of shifts) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "shifts", s.id), cleanObj(s)), 3000);
-      }
-      for (const e of cashierExpenses) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "cashierExpenses", e.id), cleanObj(e)), 3000);
-      }
-      for (const e of operationalExpenses) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "operationalExpenses", e.id), cleanObj(e)), 3000);
-      }
-      for (const i of investors) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "investors", i.id), cleanObj(i)), 3000);
-      }
-      for (const sl of stockLogs) {
-        await withTimeout(setDoc(doc(db, "stores", newCode, "stockLogs", sl.id), cleanObj(sl)), 3000);
-      }
+      writePromises.push(setDoc(doc(db, "stores", newCode, "storeSettings", "main"), cleanObj(storeSettings)));
+
+      products.forEach(p => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "products", p.id), cleanObj(p)));
+      });
+      categories.forEach(cat => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "categories", cat.id), cleanObj(cat)));
+      });
+      toppings.forEach(t => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "toppings", t.id), cleanObj(t)));
+      });
+      discounts.forEach(d => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "discounts", d.id), cleanObj(d)));
+      });
+      transactions.forEach(t => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "transactions", t.id), cleanObj(t)));
+      });
+      shifts.forEach(s => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "shifts", s.id), cleanObj(s)));
+      });
+      cashierExpenses.forEach(e => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "cashierExpenses", e.id), cleanObj(e)));
+      });
+      operationalExpenses.forEach(e => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "operationalExpenses", e.id), cleanObj(e)));
+      });
+      investors.forEach(i => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "investors", i.id), cleanObj(i)));
+      });
+      stockLogs.forEach(sl => {
+        writePromises.push(setDoc(doc(db, "stores", newCode, "stockLogs", sl.id), cleanObj(sl)));
+      });
+
+      // Execute all writes concurrently with a robust 20 seconds timeout to handle high latency environments
+      await withTimeout(
+        Promise.all(writePromises),
+        20000,
+        "Koneksi timed out saat menyinkronkan data ke Cloud. Perangkat luring atau sinyal lemah. Sila periksa jaringan Anda dan coba lagi."
+      );
 
       localStorage.setItem("kasir_store_code", newCode);
       setStoreCode(newCode);
