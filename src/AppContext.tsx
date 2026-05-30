@@ -77,6 +77,7 @@ interface AppContextType {
   addDiscount: (discount: Omit<Discount, "id">) => void;
   updateDiscount: (discount: Discount) => void;
   deleteDiscount: (id: string) => void;
+  importBackupData: (backup: any) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -224,6 +225,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [storeCode]);
 
+  // Timeout helper to avoid indefinite hanging when offline or firestore cannot connect
+  const withTimeout = <T,>(promise: Promise<T>, ms = 6000, errorMsg = "Koneksi timed out. Perangkat luring (offline) atau sinyal lemah. Sila aktifkan jaringan Anda."): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms))
+    ]);
+  };
+
   // Sync methods for connecting and generating Cloud Stores
   const generateNewStoreCode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -242,37 +251,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newCode = generateNewStoreCode();
     try {
       // Seed current local memory states into cloud
-      await setDoc(doc(db, "stores", newCode, "storeSettings", "main"), cleanObj(storeSettings));
+      await withTimeout(setDoc(doc(db, "stores", newCode, "storeSettings", "main"), cleanObj(storeSettings)), 5000);
 
       for (const p of products) {
-        await setDoc(doc(db, "stores", newCode, "products", p.id), cleanObj(p));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "products", p.id), cleanObj(p)), 3000);
       }
       for (const cat of categories) {
-        await setDoc(doc(db, "stores", newCode, "categories", cat.id), cleanObj(cat));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "categories", cat.id), cleanObj(cat)), 3000);
       }
       for (const t of toppings) {
-        await setDoc(doc(db, "stores", newCode, "toppings", t.id), cleanObj(t));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "toppings", t.id), cleanObj(t)), 3000);
       }
       for (const d of discounts) {
-        await setDoc(doc(db, "stores", newCode, "discounts", d.id), cleanObj(d));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "discounts", d.id), cleanObj(d)), 3000);
       }
       for (const t of transactions) {
-        await setDoc(doc(db, "stores", newCode, "transactions", t.id), cleanObj(t));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "transactions", t.id), cleanObj(t)), 3000);
       }
       for (const s of shifts) {
-        await setDoc(doc(db, "stores", newCode, "shifts", s.id), cleanObj(s));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "shifts", s.id), cleanObj(s)), 3000);
       }
       for (const e of cashierExpenses) {
-        await setDoc(doc(db, "stores", newCode, "cashierExpenses", e.id), cleanObj(e));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "cashierExpenses", e.id), cleanObj(e)), 3000);
       }
       for (const e of operationalExpenses) {
-        await setDoc(doc(db, "stores", newCode, "operationalExpenses", e.id), cleanObj(e));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "operationalExpenses", e.id), cleanObj(e)), 3000);
       }
       for (const i of investors) {
-        await setDoc(doc(db, "stores", newCode, "investors", i.id), cleanObj(i));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "investors", i.id), cleanObj(i)), 3000);
       }
       for (const sl of stockLogs) {
-        await setDoc(doc(db, "stores", newCode, "stockLogs", sl.id), cleanObj(sl));
+        await withTimeout(setDoc(doc(db, "stores", newCode, "stockLogs", sl.id), cleanObj(sl)), 3000);
       }
 
       localStorage.setItem("kasir_store_code", newCode);
@@ -288,13 +297,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const trimmed = code.trim().toUpperCase();
     if (!trimmed) return false;
     try {
-      const settingsSnap = await getDoc(doc(db, "stores", trimmed, "storeSettings", "main"));
+      const settingsSnap = await withTimeout(
+        getDoc(doc(db, "stores", trimmed, "storeSettings", "main")),
+        6000,
+        "Koneksi lambat atau server offline. Periksa koneksi internet Anda."
+      );
       if (settingsSnap.exists()) {
         localStorage.setItem("kasir_store_code", trimmed);
         setStoreCode(trimmed);
         return true;
       } else {
-        const prodSnap = await getDocs(collection(db, "stores", trimmed, "products"));
+        const prodSnap = await withTimeout(
+          getDocs(collection(db, "stores", trimmed, "products")),
+          6000,
+          "Koneksi lambat atau server offline. Periksa koneksi internet Anda."
+        );
         if (!prodSnap.empty) {
           localStorage.setItem("kasir_store_code", trimmed);
           setStoreCode(trimmed);
@@ -302,15 +319,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
       return false;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Gagal menyambung kode sinkronisasi cloud:", err);
-      return false;
+      throw err;
     }
   };
 
   const disconnectStore = () => {
     localStorage.removeItem("kasir_store_code");
     setStoreCode(null);
+  };
+
+  // Full Import Backup Data utility (100% offline & optionally sync to cloud if cloud active)
+  const importBackupData = async (backup: any): Promise<boolean> => {
+    try {
+      if (!backup || typeof backup !== "object") {
+        throw new Error("Berkas cadangan tidak valid atau rusak.");
+      }
+
+      const importedProducts = Array.isArray(backup.products) ? backup.products : [];
+      const importedTransactions = Array.isArray(backup.transactions) ? backup.transactions : [];
+      const importedCashierExpenses = Array.isArray(backup.cashierExpenses) ? backup.cashierExpenses : [];
+      const importedOperationalExpenses = Array.isArray(backup.operationalExpenses) ? backup.operationalExpenses : [];
+      const importedInvestors = Array.isArray(backup.investors) ? backup.investors : [];
+      const importedStoreSettings = backup.storeSettings && typeof backup.storeSettings === "object" ? backup.storeSettings : null;
+      const importedCategories = Array.isArray(backup.categories) ? backup.categories : [];
+      const importedStockLogs = Array.isArray(backup.stockLogs) ? backup.stockLogs : [];
+      const importedShifts = Array.isArray(backup.shifts) ? backup.shifts : [];
+      const importedToppings = Array.isArray(backup.toppings) ? backup.toppings : [];
+      const importedDiscounts = Array.isArray(backup.discounts) ? backup.discounts : [];
+
+      // Save standard memory sets locally
+      saveProducts(importedProducts);
+      setProducts(importedProducts);
+
+      saveTransactions(importedTransactions);
+      setTransactions(importedTransactions);
+
+      saveCashierExpenses(importedCashierExpenses);
+      setCashierExpenses(importedCashierExpenses);
+
+      saveOperationalExpenses(importedOperationalExpenses);
+      setOperationalExpenses(importedOperationalExpenses);
+
+      saveInvestors(importedInvestors);
+      setInvestors(importedInvestors);
+
+      if (importedStoreSettings) {
+        saveStoreSettings(importedStoreSettings);
+        setStoreSettings(importedStoreSettings);
+      }
+
+      saveCategories(importedCategories);
+      setCategories(importedCategories);
+
+      saveStockLogs(importedStockLogs);
+      setStockLogs(importedStockLogs);
+
+      saveShifts(importedShifts);
+      setShifts(importedShifts);
+
+      saveToppings(importedToppings);
+      setToppings(importedToppings);
+
+      saveDiscounts(importedDiscounts);
+      setDiscounts(importedDiscounts);
+
+      // If cloud is connected, optionally seed firestore
+      if (storeCode) {
+        try {
+          if (importedStoreSettings) {
+            await setDoc(doc(db, "stores", storeCode, "storeSettings", "main"), cleanObj(importedStoreSettings));
+          }
+          for (const p of importedProducts) {
+            await setDoc(doc(db, "stores", storeCode, "products", p.id), cleanObj(p));
+          }
+          for (const cat of importedCategories) {
+            await setDoc(doc(db, "stores", storeCode, "categories", cat.id), cleanObj(cat));
+          }
+          for (const t of importedToppings) {
+            await setDoc(doc(db, "stores", storeCode, "toppings", t.id), cleanObj(t));
+          }
+          for (const d of importedDiscounts) {
+            await setDoc(doc(db, "stores", storeCode, "discounts", d.id), cleanObj(d));
+          }
+          for (const t of importedTransactions) {
+            await setDoc(doc(db, "stores", storeCode, "transactions", t.id), cleanObj(t));
+          }
+          for (const s of importedShifts) {
+            await setDoc(doc(db, "stores", storeCode, "shifts", s.id), cleanObj(s));
+          }
+          for (const e of importedCashierExpenses) {
+            await setDoc(doc(db, "stores", storeCode, "cashierExpenses", e.id), cleanObj(e));
+          }
+          for (const e of importedOperationalExpenses) {
+            await setDoc(doc(db, "stores", storeCode, "operationalExpenses", e.id), cleanObj(e));
+          }
+          for (const i of importedInvestors) {
+            await setDoc(doc(db, "stores", storeCode, "investors", i.id), cleanObj(i));
+          }
+          for (const sl of importedStockLogs) {
+            await setDoc(doc(db, "stores", storeCode, "stockLogs", sl.id), cleanObj(sl));
+          }
+        } catch (cloudErr) {
+          console.warn("Gagal menautkan cadangan ke cloud, tetapi data lokal berhasil disimpan:", cloudErr);
+        }
+      }
+
+      return true;
+    } catch (e) {
+      console.error("Gagal memulihkan cadangan data:", e);
+      throw e;
+    }
   };
 
   // Compute active shift with real-time aggregated shift figures
@@ -1231,7 +1351,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteTopping,
         addDiscount,
         updateDiscount,
-        deleteDiscount
+        deleteDiscount,
+        importBackupData
       }}
     >
       {children}

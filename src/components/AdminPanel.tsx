@@ -11,9 +11,11 @@ import {
   Plus, Edit, Trash2, Package, TrendingUp, TrendingDown,
   DollarSign, Landmark, RefreshCw, AlertCircle, ShoppingCart, 
   Settings, Save, X, Calendar, Layers, Info, History, Tag, Sliders, Search, AlertTriangle, Percent,
-  Copy, Check, Wifi
+  Copy, Check, Wifi, Download, Upload
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { GoogleSyncWidget } from "./GoogleSyncWidget";
+
 
 export const AdminPanel: React.FC = () => {
   const { 
@@ -45,7 +47,10 @@ export const AdminPanel: React.FC = () => {
     storeCode,
     connectStore,
     generateNewStore,
-    disconnectStore
+    disconnectStore,
+    shifts,
+    investors,
+    importBackupData
   } = useApp();
 
   // Active Tabs in Admin Panel
@@ -125,6 +130,77 @@ export const AdminPanel: React.FC = () => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
+
+  // 100% Offline backup handlers (Lighter and easier alternative)
+  const handleExportBackup = () => {
+    try {
+      const backupData = {
+        products,
+        transactions,
+        cashierExpenses,
+        operationalExpenses,
+        investors,
+        storeSettings,
+        categories,
+        stockLogs,
+        shifts,
+        toppings,
+        discounts
+      };
+      
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+        JSON.stringify(backupData, null, 2)
+      )}`;
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", jsonString);
+      
+      const storeNameClean = (storeSettings.storeName || "pos-umkm").toLowerCase().replace(/[^a-z0-9]/g, "-");
+      const dateStr = new Date().toISOString().split("T")[0];
+      downloadAnchor.setAttribute("download", `cadangan-kasir-${storeNameClean}-${dateStr}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      
+      setSyncSuccessMessage("File Cadangan (.json) berhasil diunduh! Simpan file ini di tempat aman.");
+      setSyncErrorMessage(null);
+    } catch (err: any) {
+      setSyncErrorMessage("Gagal membuat data cadangan: " + err.message);
+      setSyncSuccessMessage(null);
+    }
+  };
+
+  const handleImportBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    fileReader.onload = async (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string);
+        
+        const confirmMsg = "⚠️ PERINGATAN KRITIS: Tindakan ini akan menghapus dan menimpa seluruh data jualan aktif Anda di HP ini dengan isi file cadangan.\n\nApakah Anda sangat yakin ingin melanjutkan?";
+        if (window.confirm(confirmMsg)) {
+          setIsConnecting(true);
+          setSyncErrorMessage(null);
+          setSyncSuccessMessage(null);
+          
+          const ok = await importBackupData(parsed);
+          if (ok) {
+            setSyncSuccessMessage("🎉 Berhasil dipulihkan! Semua data produk, transaksi, kategori, s/d pengaturan telah berhasil dipulihkan secara lokal.");
+          } else {
+            setSyncErrorMessage("File cadangan tidak valid atau gagal diproses.");
+          }
+        }
+      } catch (err: any) {
+        setSyncErrorMessage("Format file cadangan tidak valid (file .json Anda kemungkinan rusak): " + err.message);
+      } finally {
+        setIsConnecting(false);
+      }
+    };
+    
+    fileReader.readAsText(file);
+    event.target.value = ""; // Clear input
+  };
 
   // Load editing product safely
   const handleEditProductClick = (p: Product) => {
@@ -1492,216 +1568,8 @@ export const AdminPanel: React.FC = () => {
         {/* TAB 6: STORE SETTINGS */}
         {adminTab === "settings" && (
           <div className="space-y-6">
-            {/* WIDGET 1: KONEKSI SECURITY & SYNC CLOUD */}
-            <div className="bg-slate-950 text-white rounded-3xl p-6 border border-slate-900 shadow-xl space-y-6 relative overflow-hidden animate-fade-in" id="widget-cloud-sinkronisasi">
-              {/* Decorative dynamic circles */}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl -ml-10 -mb-10 pointer-events-none" />
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
-                      <Wifi className="h-4 w-4" />
-                    </span>
-                    <h3 className="text-sm font-extrabold tracking-tight">Koneksi Multi-Device & Cloud Sync</h3>
-                  </div>
-                  <p className="text-slate-400 text-xs max-w-xl leading-relaxed">
-                    Sinkronisasikan seluruh transaksi, data produk, dan mutasi kasir secara real-time antar handphone staf Anda secara otomatis tanpa perlu daftar atau masuk email.
-                  </p>
-                </div>
-
-                <div>
-                  {storeCode ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 animate-pulse">
-                      <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-                      TERHUBUNG CLOUD
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-slate-900 text-slate-400 border border-slate-800">
-                      <span className="w-1.5 h-1.5 bg-slate-500 rounded-full"></span>
-                      MODE LOKAL LOKAL (OFFLINE)
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="border-t border-slate-900 pt-6 relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Connection Box */}
-                {!storeCode ? (
-                  // Flow 1: Offline / Local Mode (User can connect or generate)
-                  <>
-                    <div className="bg-slate-905 bg-slate-900/40 border border-slate-900 p-5 rounded-2xl flex flex-col justify-between space-y-4">
-                      <div className="space-y-1">
-                        <h4 className="text-xs font-bold text-slate-200">Hubungkan Kode Sync yang Ada</h4>
-                        <p className="text-[11px] text-slate-400 leading-normal">Gabungkan device baru ini dengan memasukkan kode sinkronisasi toko Anda yang sudah aktif.</p>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Contoh: KSR-A8F19"
-                          className="flex-1 bg-slate-950 border border-slate-850 focus:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono uppercase tracking-wider text-slate-100 placeholder:text-slate-700 outline-none"
-                          value={syncInput}
-                          onChange={(e) => {
-                            setSyncInput(e.target.value.toUpperCase());
-                            setSyncErrorMessage(null);
-                            setSyncSuccessMessage(null);
-                          }}
-                        />
-                        <button
-                          type="button"
-                          disabled={isConnecting || !syncInput.trim()}
-                          onClick={async () => {
-                            setSyncErrorMessage(null);
-                            setSyncSuccessMessage(null);
-                            setIsConnecting(true);
-                            try {
-                              const ok = await connectStore(syncInput.trim());
-                              if (ok) {
-                                setSyncSuccessMessage("Berhasil terhubung! Semua data Anda sudah disinkronisasikan secara real-time.");
-                                setSyncInput("");
-                              } else {
-                                setSyncErrorMessage("Kode Sinkronisasi tidak valid atau tidak ditemukan. Periksa kembali karakter toko Anda.");
-                              }
-                            } catch (e: any) {
-                              setSyncErrorMessage("Gagal menghubungkan: " + (e.message || String(e)));
-                            } finally {
-                              setIsConnecting(false);
-                            }
-                          }}
-                          className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-extrabold px-4 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          {isConnecting ? (
-                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            "Hubungkan"
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/40 border border-slate-900 p-5 rounded-2xl flex flex-col justify-between space-y-4">
-                      <div className="space-y-1">
-                        <h4 className="text-xs font-bold text-slate-200">Baru Pertama Kali Mencoba Cloud Sync?</h4>
-                        <p className="text-[11px] text-slate-400 leading-normal">
-                          Buat Kode Sync baru untuk toko Anda. Kami akan langsung mengunggah seluruh data lokal yang ada di HP ini ke Cloud secara otomatis.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={isGenerating}
-                        onClick={async () => {
-                          setSyncErrorMessage(null);
-                          setSyncSuccessMessage(null);
-                          if (confirm("Metode ini akan mengunggah seluruh daftar produk, riwayat transaksi, dan laporan di HP ini ke Cloud sebagai data awal utama. Lanjutkan?")) {
-                            setIsGenerating(true);
-                            try {
-                              const code = await generateNewStore();
-                              setSyncSuccessMessage(`🚀 Cloud Sync Berhasil Diaktifkan!\n\nKode Toko Anda adalah: ${code}\n\nMasukkan kode ini di HP staff Anda yang lain untuk mulai sinkronisasi real-time.`);
-                            } catch (e: any) {
-                              setSyncErrorMessage("Gagal mengaktifkan sinkronisasi cloud: " + (e.message || String(e)));
-                            } finally {
-                              setIsGenerating(false);
-                            }
-                          }
-                        }}
-                        className="w-full bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-100 font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        {isGenerating ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <>
-                            <RefreshCw className="h-3.5 w-3.5 text-emerald-400" />
-                            Aktifkan Cloud Sync & Unggah Data
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  // Flow 2: Cloud Sync Active (shows current code and details)
-                  <>
-                    <div className="bg-emerald-950/10 border border-emerald-900/20 p-5 rounded-2xl flex flex-col justify-between space-y-4 md:col-span-2">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <span className="text-[9px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                            KODE TOKO CLOUD SINKRON
-                          </span>
-                          <div className="flex items-center gap-3 mt-1.5">
-                            <span className="text-3xl font-black font-mono tracking-widest text-emerald-400">
-                              {storeCode}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(storeCode);
-                                setCopiedCode(true);
-                                setTimeout(() => setCopiedCode(false), 2000);
-                              }}
-                              className="p-1.5 bg-slate-900 hover:bg-slate-800 rounded-lg text-slate-300 transition-all cursor-pointer border border-slate-800"
-                              title="Salin Kode Toko"
-                            >
-                              {copiedCode ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="text-left sm:text-right text-[11px] text-slate-400 max-w-sm leading-relaxed">
-                          💡 <b>Cara Menghubungkan HP Lain:</b>
-                          <p className="mt-1">
-                            Buka aplikasi ini di HP lain, akses halaman <b>Admin &rsaquo; Pengaturan</b>, dan hubungkan menggunakan kode sinkronisasi di atas.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-slate-900 pt-4 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-slate-400">
-                        <div className="flex items-center gap-1.5 text-[11px]">
-                          <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                          <span>Status: Semua data terunggah & tersinkronisasi real-time di cloud database</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm("⚠️ Tindakan Kritis: Apakah Anda yakin ingin memutuskan sinkronisasi cloud pada HP ini?\n\nPerangkat ini akan kembali ke mode lokal offline. Data di cloud tidak akan terhapus.")) {
-                              disconnectStore();
-                            }
-                          }}
-                          className="text-rose-400 hover:text-rose-350 text-[11px] font-bold transition-colors cursor-pointer"
-                        >
-                          Putuskan Koneksi Cloud (Ganti Toko)
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Inline Feedback Messages */}
-              {(syncErrorMessage || syncSuccessMessage) && (
-                <div className="border-t border-slate-900 pt-4 relative z-10 animate-fade-in text-xs">
-                  {syncErrorMessage && (
-                    <div className="bg-rose-500/10 border border-rose-500/25 text-rose-400 p-3.5 rounded-xl flex items-center gap-2 font-medium">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span>{syncErrorMessage}</span>
-                    </div>
-                  )}
-                  {syncSuccessMessage && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 p-3.5 rounded-xl flex flex-col gap-1">
-                      <div className="flex items-center gap-2 font-bold text-emerald-300">
-                        <Check className="h-4 w-4 shrink-0 text-emerald-400" />
-                        <span>Operasi Berhasil!</span>
-                      </div>
-                      <p className="text-slate-300 text-[11px] font-medium leading-relaxed whitespace-pre-line mt-1">
-                        {syncSuccessMessage}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* AUTOMATED GOOGLE SHEETS CLOUD SYNC & RECOVERY HUB */}
+            <GoogleSyncWidget />
 
             {/* CARD 2: PENGATURAN TOKO & POS */}
             <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-xs space-y-6">

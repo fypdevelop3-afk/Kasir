@@ -73,6 +73,14 @@ export const createStoreSpreadsheet = async (
                 frozenRowCount: 1,
               }
             },
+          },
+          {
+            properties: {
+              title: "Cadangan Sistem (Jangan Dihapus)",
+              gridProperties: {
+                frozenRowCount: 1,
+              }
+            },
           }
         ],
       }),
@@ -99,6 +107,41 @@ export const createStoreSpreadsheet = async (
   }
 };
 
+// Create the system sheet tab dynamically if it doesn't exist
+const ensureBackupTabExists = async (accessToken: string, spreadsheetId: string) => {
+  try {
+    const metadataRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?includeGridData=false`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (metadataRes.ok) {
+      const info = await metadataRes.json();
+      const sheetExists = info.sheets?.some((s: any) => s.properties?.title === "Cadangan Sistem (Jangan Dihapus)");
+      if (!sheetExists) {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            requests: [
+              {
+                addSheet: {
+                  properties: {
+                    title: "Cadangan Sistem (Jangan Dihapus)"
+                  }
+                }
+              }
+            ]
+          })
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Gagal memastikan tab Cadangan Sistem ada:", e);
+  }
+};
+
 // Sync all data into the linked sheet by clearing old data, then updating with fresh values
 export const syncAllDataToGoogleSheets = async (
   accessToken: string,
@@ -106,9 +149,13 @@ export const syncAllDataToGoogleSheets = async (
   products: Product[],
   transactions: Transaction[],
   cashierExpenses: CashierExpense[],
-  operationalExpenses: OperationalExpense[]
+  operationalExpenses: OperationalExpense[],
+  rawBackupPayload?: any
 ): Promise<SyncStatus> => {
   try {
+    // Make sure the Backup tab exists in case this is an older spreadsheet
+    await ensureBackupTabExists(accessToken, spreadsheetId);
+
     // 1. Clear old data from our tab ranges
     const clearResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchClear`,
@@ -122,7 +169,8 @@ export const syncAllDataToGoogleSheets = async (
           ranges: [
             "Transaksi Penjualan!A1:Z10000",
             "Daftar Produk & Stok!A1:Z5000",
-            "Semua Pengeluaran!A1:Z5000"
+            "Semua Pengeluaran!A1:Z5000",
+            "Cadangan Sistem (Jangan Dihapus)!A1:A5"
           ],
         }),
       }
@@ -239,6 +287,28 @@ export const syncAllDataToGoogleSheets = async (
     const pengeluaranSheetData = [pengeluaranHeader, ...allExpensesRows];
 
     // 5. Build Batch Update request to update sheets simultaneously
+    const sheetsData: any[] = [
+      {
+        range: "Transaksi Penjualan!A1",
+        values: transaksiSheetData,
+      },
+      {
+        range: "Daftar Produk & Stok!A1",
+        values: produkSheetData,
+      },
+      {
+        range: "Semua Pengeluaran!A1",
+        values: pengeluaranSheetData,
+      }
+    ];
+
+    if (rawBackupPayload) {
+      sheetsData.push({
+        range: "Cadangan Sistem (Jangan Dihapus)!A1",
+        values: [[JSON.stringify(rawBackupPayload)]],
+      });
+    }
+
     const syncResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
       {
@@ -249,20 +319,7 @@ export const syncAllDataToGoogleSheets = async (
         },
         body: JSON.stringify({
           valueInputOption: "USER_ENTERED",
-          data: [
-            {
-              range: "Transaksi Penjualan!A1",
-              values: transaksiSheetData,
-            },
-            {
-              range: "Daftar Produk & Stok!A1",
-              values: produkSheetData,
-            },
-            {
-              range: "Semua Pengeluaran!A1",
-              values: pengeluaranSheetData,
-            }
-          ],
+          data: sheetsData,
         }),
       }
     );
@@ -284,3 +341,36 @@ export const syncAllDataToGoogleSheets = async (
     };
   }
 };
+
+// Download latest system backup from Google Sheets
+export const fetchBackupFromGoogleSheets = async (
+  accessToken: string,
+  spreadsheetId: string
+): Promise<any> => {
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Cadangan%20Sistem%20(Jangan%20Dihapus)!A1`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || "Gagal mengunduh berkas cadangan dari Google Sheets.");
+  }
+
+  const data = await response.json();
+  if (!data.values || data.values.length === 0 || data.values[0].length === 0) {
+    throw new Error("Kolom cadangan kosong di Google Sheets atau belum pernah disinkronkan.");
+  }
+
+  try {
+    const parsed = JSON.parse(data.values[0][0]);
+    return parsed;
+  } catch (e: any) {
+    throw new Error("Gagal mengurai file cadangan dari Google Sheets: " + e.message);
+  }
+};
+

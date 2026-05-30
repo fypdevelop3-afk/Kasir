@@ -16,23 +16,41 @@ import {
 import { 
   createStoreSpreadsheet, 
   syncAllDataToGoogleSheets, 
-  verifySpreadsheetExists 
+  verifySpreadsheetExists,
+  fetchBackupFromGoogleSheets
 } from "../utils/googleSheetsService";
 import { 
   Cloud, CloudOff, FileSpreadsheet, RefreshCw, 
-  CheckCircle, ArrowUpRight, LogOut, Loader2, Sparkles, AlertCircle
+  CheckCircle, ArrowUpRight, LogOut, Loader2, Sparkles, AlertCircle,
+  Download, Upload, Link2, HelpCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export const GoogleSyncWidget: React.FC = () => {
-  const { products, transactions, cashierExpenses, operationalExpenses, storeSettings } = useApp();
+  const { 
+    products, 
+    transactions, 
+    cashierExpenses, 
+    operationalExpenses, 
+    storeSettings,
+    categories,
+    stockLogs,
+    shifts,
+    toppings,
+    discounts,
+    investors,
+    importBackupData
+  } = useApp();
 
   // Authentication states
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
+  const [manualSheetIdInput, setManualSheetIdInput] = useState("");
+  const [isLinkingSheet, setIsLinkingSheet] = useState(false);
 
   // Spreadsheet state
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => {
@@ -189,13 +207,28 @@ export const GoogleSyncWidget: React.FC = () => {
     setIsSyncing(true);
     setStatusMessage(null);
 
+    const backupPayload = {
+      products,
+      transactions,
+      cashierExpenses,
+      operationalExpenses,
+      storeSettings,
+      categories,
+      stockLogs,
+      shifts,
+      toppings,
+      discounts,
+      investors
+    };
+
     const result = await syncAllDataToGoogleSheets(
       accessToken,
       spreadsheetId,
       products,
       transactions,
       cashierExpenses,
-      operationalExpenses
+      operationalExpenses,
+      backupPayload
     );
 
     setIsSyncing(false);
@@ -205,7 +238,7 @@ export const GoogleSyncWidget: React.FC = () => {
       localStorage.setItem("kasir_last_synced", nowStr);
       setLastSyncedTime(nowStr);
       setStatusMessage({
-        text: result.message,
+        text: result.message + " Cadangan sistem juga telah disimpan dengan aman di Google Sheets.",
         isError: false
       });
     } else {
@@ -223,6 +256,87 @@ export const GoogleSyncWidget: React.FC = () => {
       }
     }
   };
+
+  // Pull/Restore data from Sheets
+  const handlePullFromSheets = async () => {
+    if (!accessToken || !spreadsheetId) {
+      setStatusMessage({ text: "Gagal mendeteksi Spreadsheet terhubung. Silakan login & sambungkan file terlebih dahulu.", isError: true });
+      return;
+    }
+
+    const confirmMsg = "⚠️ PERINGATAN PANTAUAN:\nTindakan ini akan menghapus dan menimpa seluruh data jualan aktif di perangkat ini dengan isi data cadangan yang tersimpan di Google Sheets Anda.\n\nApakah Anda sangat yakin ingin melanjutkan?";
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsPulling(true);
+    setStatusMessage(null);
+
+    try {
+      const parsed = await fetchBackupFromGoogleSheets(accessToken, spreadsheetId);
+      const ok = await importBackupData(parsed);
+      if (ok) {
+        setStatusMessage({
+          text: "🎉 BERHASIL MENARIK DATA! Seluruh data katalog produk, transaksi, shift, s/d diskon di perangkat ini berhasil dipulihkan sesuai isi Google Sheet terakhir.",
+          isError: false
+        });
+      } else {
+        setStatusMessage({
+          text: "Format cadangan sheet tidak dikenali.",
+          isError: true
+        });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage({
+        text: err.message || "Gagal mengimpor cadangan dari Google Sheets. Pastikan HP utama Anda sudah melakukan 'Sinkronkan Sekarang' sebelumnya.",
+        isError: true
+      });
+    } finally {
+      setIsPulling(false);
+    }
+  };
+
+  // Manual Spreadsheet linking handler
+  const handleLinkManualSpreadsheet = async () => {
+    if (!accessToken) {
+      setStatusMessage({ text: "Sila hubungkan akun Google Anda terlebih dahulu untuk menautkan Spreadsheet.", isError: true });
+      return;
+    }
+    const cleanInput = manualSheetIdInput.trim();
+    if (!cleanInput) return;
+
+    let targetId = cleanInput;
+    if (cleanInput.includes("docs.google.com/spreadsheets")) {
+      const match = cleanInput.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match) {
+        targetId = match[1];
+      }
+    }
+
+    setIsLinkingSheet(true);
+    setStatusMessage(null);
+
+    const exists = await verifySpreadsheetExists(accessToken, targetId);
+    setIsLinkingSheet(false);
+
+    if (exists) {
+      const url = `https://docs.google.com/spreadsheets/d/${targetId}/edit`;
+      localStorage.setItem("kasir_spreadsheet_id", targetId);
+      localStorage.setItem("kasir_spreadsheet_url", url);
+      setSpreadsheetId(targetId);
+      setSpreadsheetUrl(url);
+      setManualSheetIdInput("");
+      setStatusMessage({
+        text: "Sukses tersambung! Google Sheet bersama berhasil ditautkan ke HP ini.",
+        isError: false
+      });
+    } else {
+      setStatusMessage({
+        text: "Tautan/ID Spreadsheet tidak valid, atau akun Google Anda tidak diizinkan mengakses berkas tersebut.",
+        isError: true
+      });
+    }
+  };
+
 
   return (
     <div id="google-sync-card" className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden">
@@ -338,96 +452,176 @@ export const GoogleSyncWidget: React.FC = () => {
                 <div className="border border-slate-100 rounded-2xl p-4 space-y-3.5">
                   {!spreadsheetId ? (
                     // IF NO SPREADSHEET LINKED
-                    <div className="space-y-3 text-center py-2">
-                      <div className="inline-block p-2.5 bg-amber-50 text-amber-600 rounded-full">
-                        <AlertCircle className="h-5 w-5" />
+                    <div className="space-y-4">
+                      <div className="text-center py-2 space-y-2">
+                        <div className="inline-block p-2.5 bg-amber-50 text-amber-600 rounded-full">
+                          <AlertCircle className="h-5 w-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-slate-800 text-xs text-center">Belum ada Spreadsheet terhubung</h4>
+                          <p className="text-[11px] text-slate-400">Pilih opsi di bawah untuk membuat atau menggunakan Spreadsheet bersama.</p>
+                        </div>
+                        
+                        <button
+                          onClick={handleCreateSpreadsheet}
+                          disabled={isCreatingSheet}
+                          className="mx-auto flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold rounded-xl transition-all cursor-pointer disabled:cursor-not-allowed font-sans text-xs"
+                        >
+                          {isCreatingSheet ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span>Membuat File Baru di Drive...</span>
+                            </>
+                          ) : (
+                            <>
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
+                              <span>Buat Spreadsheet Baru di Drive</span>
+                            </>
+                          )}
+                        </button>
                       </div>
-                      <div className="space-y-1">
-                        <h4 className="font-bold text-slate-800 text-xs text-center">Belum ada Spreadsheet terhubung</h4>
-                        <p className="text-[11px] text-slate-400">Silakan inisiasi pembuatan Spreadsheet baru di Google Drive Anda untuk menampung data.</p>
+
+                      {/* MANUAL LINK FORM - CRITICAL FOR SECURE MULTI-DEVICE PAIRING */}
+                      <div className="border-t border-slate-100 pt-4 space-y-2.5">
+                        <div className="flex items-center gap-1.5 text-slate-700">
+                          <Link2 className="h-3.5 w-3.5 text-emerald-600" />
+                          <h5 className="font-extrabold text-[11px] uppercase tracking-wider">Tautkan Spreadsheet ID dari HP Lain</h5>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-normal">
+                          Gunakan spreadsheet yang sama di perangkat lain dengan memasukkan ID atau Tautan lengkap Google Sheets ke sini:
+                        </p>
+                        
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Tautan URL atau ID Spreadsheet..."
+                            className="flex-1 bg-slate-50 border border-slate-200 outline-none focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400 transition-colors font-mono"
+                            value={manualSheetIdInput}
+                            onChange={(e) => setManualSheetIdInput(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            disabled={isLinkingSheet || !manualSheetIdInput.trim()}
+                            onClick={handleLinkManualSpreadsheet}
+                            className="bg-slate-900 hover:bg-slate-850 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold px-3.5 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shrink-0"
+                          >
+                            {isLinkingSheet ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              "Hubungkan"
+                            )}
+                          </button>
+                        </div>
                       </div>
-                      
-                      <button
-                        onClick={handleCreateSpreadsheet}
-                        disabled={isCreatingSheet}
-                        className="mx-auto flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold rounded-xl transition-all cursor-pointer disabled:cursor-not-allowed"
-                      >
-                        {isCreatingSheet ? (
-                          <>
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            <span>Membuat File...</span>
-                          </>
-                        ) : (
-                          <>
-                            <FileSpreadsheet className="h-3.5 w-3.5" />
-                            <span>Buat Spreadsheet Baru di Drive</span>
-                          </>
-                        )}
-                      </button>
                     </div>
                   ) : (
                     // IF SPREADSHEET ALREADY LINKED
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-start gap-2 bg-emerald-50/40 p-3 rounded-xl border border-emerald-100/50">
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-emerald-50/40 p-3.5 rounded-2xl border border-emerald-100/50">
                         <div className="space-y-0.5">
-                          <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wider block">Spreadsheet Terhubung</span>
-                          <span className="font-extrabold text-slate-800 block text-[11px] truncate max-w-[200px]">
-                            Laporan Pendapatan & Stok
+                          <span className="text-[9px] font-extrabold text-emerald-700 uppercase tracking-widest block">Spreadsheet Sinkronisasi Aktif</span>
+                          <span className="font-extrabold text-slate-900 block text-xs truncate max-w-[240px]">
+                            Laporan Pendapatan & Stok (KASIR-UMKM)
                           </span>
-                          {lastSyncedTime && (
-                            <span className="text-[10px] text-slate-400 block font-mono">
+                          {lastSyncedTime ? (
+                            <span className="text-[10px] text-slate-500 block font-mono">
                               Sinkron Terakhir: {lastSyncedTime}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-amber-600 font-bold block">
+                              Belum pernah disinkronkan
                             </span>
                           )}
                         </div>
-
-                        {spreadsheetUrl && (
-                          <a
-                            href={spreadsheetUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-0.5 p-1 px-2.5 bg-white text-emerald-700 font-bold border border-emerald-150 rounded-lg hover:bg-emerald-50 transition-all text-[10px]"
+ 
+                        <div className="flex items-center gap-2">
+                          {spreadsheetUrl && (
+                            <a
+                              href={spreadsheetUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 p-1.5 px-3 bg-white text-emerald-700 font-extrabold border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-all text-[10px] shadow-xs"
+                            >
+                              <span>Buka Sheet</span>
+                              <ArrowUpRight className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm("Apakah Anda yakin ingin memutuskan tautan Spreadsheet saat ini? Data Anda tidak akan hilang dari Drive.")) {
+                                localStorage.removeItem("kasir_spreadsheet_id");
+                                localStorage.removeItem("kasir_spreadsheet_url");
+                                setSpreadsheetId(null);
+                                setSpreadsheetUrl(null);
+                                setStatusMessage({ text: "Tautan Spreadsheet dilepas.", isError: false });
+                              }
+                            }}
+                            className="p-1 px-2.5 hover:bg-rose-50 text-rose-600 bg-white border border-rose-100 rounded-lg font-bold text-[10px] transition-all cursor-pointer"
                           >
-                            <span>Buka Sheet</span>
-                            <ArrowUpRight className="h-3 w-3" />
-                          </a>
-                        )}
+                            Lepas
+                          </button>
+                        </div>
                       </div>
-
+ 
                       {/* STATS COUNT */}
-                      <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono font-semibold text-slate-500 py-1">
-                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                          <p className="text-slate-800 font-bold text-xs">{products.length}</p>
-                          <p className="text-[9px] text-slate-400 uppercase">Produk</p>
+                      <div className="grid grid-cols-3 gap-2.5 text-center text-[10px] font-mono font-semibold text-slate-500 py-1">
+                        <div className="bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
+                          <p className="text-slate-900 font-black text-sm">{products.length}</p>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Produk</p>
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                          <p className="text-slate-800 font-bold text-xs">{transactions.length}</p>
-                          <p className="text-[9px] text-slate-400 uppercase">Transaksi</p>
+                        <div className="bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
+                          <p className="text-slate-900 font-black text-sm">{transactions.length}</p>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Transaksi</p>
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-xl border border-slate-100">
-                          <p className="text-slate-800 font-bold text-xs">{cashierExpenses.length + operationalExpenses.length}</p>
-                          <p className="text-[9px] text-slate-400 uppercase">Biaya</p>
+                        <div className="bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
+                          <p className="text-slate-900 font-black text-sm">{cashierExpenses.length + operationalExpenses.length}</p>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">Beban Riwayat</p>
                         </div>
                       </div>
+ 
+                      {/* DUAL ACTION SYNC TRIGGERS */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        {/* 1. Upload/Send locally synced copies */}
+                        <button
+                          type="button"
+                          onClick={handleSyncNow}
+                          disabled={isSyncing || isPulling}
+                          className="w-full flex items-center justify-center gap-1.5 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-extrabold rounded-xl transition-all cursor-pointer disabled:cursor-not-allowed text-xs shadow-xs"
+                        >
+                          {isSyncing ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span>Mengirim Data...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-3.5 w-3.5 text-white" />
+                              <span>Sinkronkan Keluar (Unggah)</span>
+                            </>
+                          )}
+                        </button>
 
-                      {/* SYNC TRIGER */}
-                      <button
-                        onClick={handleSyncNow}
-                        disabled={isSyncing}
-                        className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-slate-900 text-white font-extrabold rounded-xl hover:bg-slate-800 active:scale-98 transition-all cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                      >
-                        {isSyncing ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
-                            <span>Mengunggah data ke Google...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="h-3.5 w-3.5 text-emerald-500 animate-spin" style={{ animationDuration: '4s' }} />
-                            <span>Sinkronkan Sekarang</span>
-                          </>
-                        )}
-                      </button>
+                        {/* 2. Download / Pull standard sheets values dynamically */}
+                        <button
+                          type="button"
+                          onClick={handlePullFromSheets}
+                          disabled={isSyncing || isPulling}
+                          className="w-full flex items-center justify-center gap-1.5 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-400 text-white font-extrabold rounded-xl transition-all cursor-pointer disabled:cursor-not-allowed text-xs shadow-xs"
+                        >
+                          {isPulling ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
+                              <span>Menarik Data...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Download className="h-3.5 w-3.5 text-emerald-400" />
+                              <span>Sinkronkan Masuk (Tarik)</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
